@@ -1,0 +1,27 @@
+{
+  "resources":{
+  "includes":[
+    {
+      "pattern":"\\QMETA-INF/services/org.apache.jena.sys.JenaSubsystemLifecycle\\E"
+    }, 
+    {
+      "pattern":"\\Qorg/apache/jena/arq/arq-properties.xml\\E"
+    }, 
+    {
+      "pattern":"\\Qorg/apache/jena/jena-properties.xml\\E"
+    }, 
+    {
+      "pattern":"\\Qorg/apache/jena/tdb/tdb-properties.xml\\E"
+    }, 
+    {
+      "pattern":"\\Qorg/apache/jena/tdb2/tdb2-properties.xml\\E"
+    }, 
+    {
+      "pattern":"\\Qorg/slf4j/impl/StaticLoggerBinder.class\\E"
+    }
+  ]},
+  "bundles":[{
+      "name":"org.apache.jena.ext.xerces.impl.xpath.regex.message",
+      "locales":[""]
+    }]
+}

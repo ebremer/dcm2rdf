@@ -1,0 +1,52 @@
+[
+{
+  "name":"com.beust.jcommander.validators.NoValueValidator",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.ebremer.dcm2rdf.Dcm2RdfValidator",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.ebremer.dcm2rdf.FileConverter",
+  "queryAllDeclaredConstructors":true,
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.ebremer.dcm2rdf.Parameters",
+  "allDeclaredFields":true,
+  "queryAllDeclaredMethods":true
+},
+{
+  "name":"com.github.jsonldjava.core.JsonLdProcessor"
+},
+{
+  "name":"java.io.File",
+  "allDeclaredFields":true
+},
+{
+  "name":"java.io.FilePermission"
+},
+{
+  "name":"java.lang.RuntimePermission"
+},
+{
+  "name":"java.net.NetPermission"
+},
+{
+  "name":"java.net.SocketPermission"
+},
+{
+  "name":"java.net.URLPermission",
+  "methods":[{"name":"<init>","parameterTypes":["java.lang.String","java.lang.String"] }]
+},
+{
+  "name":"java.security.AllPermission"
+},
+{
+  "name":"java.security.SecurityPermission"
+},
+{
+  "name":"java.util.PropertyPermission"
+}
+]
