@@ -7,6 +7,8 @@ import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class HashGeneratorUtils {
     private HashGeneratorUtils() {
@@ -59,7 +61,7 @@ public class HashGeneratorUtils {
 	try (FileInputStream inputStream = new FileInputStream(file)) {
             MessageDigest digest = MessageDigest.getInstance(algorithm);		
             byte[] bytesBuffer = new byte[1024];
-            int bytesRead = -1;		
+            int bytesRead;		
             while ((bytesRead = inputStream.read(bytesBuffer)) != -1) {
 		digest.update(bytesBuffer, 0, bytesRead);
             }		
@@ -69,6 +71,13 @@ public class HashGeneratorUtils {
 		throw new HashGenerationException("Could not generate hash from file", ex);
             }
     }
+    
+    private static String hashBytes(byte[] bytes, String algorithm) throws HashGenerationException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance(algorithm);		
+        digest.update(bytes, 0, bytes.length);
+        byte[] hashedBytes = digest.digest();		
+        return convertByteArrayToHexString(hashedBytes);
+    }
 	
     private static String convertByteArrayToHexString(byte[] arrayBytes) {
 	StringBuilder stringBuffer = new StringBuilder();
@@ -76,5 +85,29 @@ public class HashGeneratorUtils {
             stringBuffer.append(Integer.toString((arrayBytes[i] & 0xff) + 0x100, 16).substring(1));
 	}		
 	return stringBuffer.toString();
+    }
+    
+    public static String generateMD5(byte[] bytes) {
+        try {
+            return hashBytes(bytes, "MD5");
+        } catch (NoSuchAlgorithmException ex) {
+            Logger.getLogger(HashGeneratorUtils.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        } catch (HashGenerationException ex) {
+            Logger.getLogger(HashGeneratorUtils.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        }
+    }
+    
+    public static String generateSHA256(byte[] bytes) {
+        try {
+            return hashBytes(bytes, "SHA-256");
+        } catch (NoSuchAlgorithmException ex) {
+            Logger.getLogger(HashGeneratorUtils.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        } catch (HashGenerationException ex) {
+            Logger.getLogger(HashGeneratorUtils.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        }
     }
 }

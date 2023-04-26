@@ -8,7 +8,6 @@ public class Dcm2RdfValidator implements IParameterValidator {
     
     @Override
     public void validate(String parameterName, String parameterValue) {
-        System.out.println("Validator : "+parameterName+" --> "+parameterValue);
       // No validation is performed
     }
 }

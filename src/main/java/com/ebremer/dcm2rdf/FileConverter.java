@@ -7,7 +7,6 @@ public class FileConverter implements IStringConverter<File> {
 
     @Override
     public File convert(String value) {
-        System.out.println("YAY!!! "+value);
         return new File(value);
     }
 }

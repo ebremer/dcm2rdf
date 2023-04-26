@@ -3,43 +3,70 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.ebremer</groupId>
   <artifactId>dcm2rdf</artifactId>
-  <version>0.0.0</version>
+  <version>1.0.0</version>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <compilerArgs />
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
   <profiles>
     <profile>
-      <id>dcm2rdf</id>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>0.10.3</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>build</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <imageName>dcm2rdf</imageName>
+              <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
+              <debug>true</debug>
+              <skipNativeTests>true</skipNativeTests>
+              <verbose>true</verbose>
+              <buildArgs>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>-H:ConfigurationFileDirectories=config</buildArg>
+                <buildArg>--enable-url-protocols=https</buildArg>
+                <buildArg>-H:+AddAllCharsets</buildArg>
+                <buildArg>-march=native</buildArg>
+                <buildArg>--no-server</buildArg>
+                <buildArg>-J-Xmx32G</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jar</id>
       <build>
         <plugins>
           <plugin>
             <artifactId>maven-shade-plugin</artifactId>
-            <version>3.4.1</version>
+            <version>3.6.0</version>
             <executions>
               <execution>
                 <phase>package</phase>
                 <goals>
                   <goal>shade</goal>
                 </goals>
-                <configuration>
-                  <shadedArtifactAttached>false</shadedArtifactAttached>
-                  <transformers>
-                    <transformer>
-                      <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
-                      <manifestEntries>
-                        <Multi-Release>true</Multi-Release>
-                      </manifestEntries>
-                    </transformer>
-                    <transformer />
-                  </transformers>
-                  <filters>
-                    <filter>
-                      <artifact>*:*</artifact>
-                      <excludes>
-                        <exclude>META-INF/*.SF</exclude>
-                        <exclude>META-INF/*.DSA</exclude>
-                        <exclude>META-INF/*.RSA</exclude>
-                      </excludes>
-                    </filter>
-                  </filters>
-                </configuration>
               </execution>
             </executions>
             <configuration>
@@ -65,49 +92,45 @@
               </filters>
             </configuration>
           </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jar2</id>
+      <build>
+        <plugins>
           <plugin>
-            <groupId>org.graalvm.buildtools</groupId>
-            <artifactId>native-maven-plugin</artifactId>
-            <version>0.9.21</version>
-            <extensions>true</extensions>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>3.6.0</version>
             <executions>
               <execution>
-                <id>build-native</id>
                 <phase>package</phase>
                 <goals>
-                  <goal>build</goal>
+                  <goal>shade</goal>
                 </goals>
-                <configuration>
-                  <imageName>dcm2rdf</imageName>
-                  <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
-                  <debug>true</debug>
-                  <skipNativeBuild>true</skipNativeBuild>
-                  <skipNativeTests>true</skipNativeTests>
-                  <verbose>true</verbose>
-                  <buildArgs>
-                    <buildArg>--no-fallback</buildArg>
-                    <buildArg>-H:ConfigurationFileDirectories=config</buildArg>
-                    <buildArg>--enable-url-protocols=https</buildArg>
-                    <buildArg>-H:+AddAllCharsets</buildArg>
-                    <buildArg>--static</buildArg>
-                  </buildArgs>
-                </configuration>
               </execution>
             </executions>
             <configuration>
-              <imageName>dcm2rdf</imageName>
-              <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
-              <debug>true</debug>
-              <skipNativeBuild>true</skipNativeBuild>
-              <skipNativeTests>true</skipNativeTests>
-              <verbose>true</verbose>
-              <buildArgs>
-                <buildArg>--no-fallback</buildArg>
-                <buildArg>-H:ConfigurationFileDirectories=config</buildArg>
-                <buildArg>--enable-url-protocols=https</buildArg>
-                <buildArg>-H:+AddAllCharsets</buildArg>
-                <buildArg>--static</buildArg>
-              </buildArgs>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <transformers>
+                <transformer>
+                  <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
+                </transformer>
+                <transformer />
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
             </configuration>
           </plugin>
         </plugins>
@@ -125,16 +148,26 @@
     <dependency>
       <groupId>org.apache.jena</groupId>
       <artifactId>apache-jena-libs</artifactId>
-      <version>4.8.0</version>
+      <version>5.2.0</version>
       <type>pom</type>
       <scope>compile</scope>
+      <exclusions>
+        <exclusion>
+          <artifactId>slf4j-api</artifactId>
+          <groupId>org.slf4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>jcl-over-slf4j</artifactId>
+          <groupId>org.slf4j</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
   <properties>
-    <maven.compiler.target>17</maven.compiler.target>
-    <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
-    <maven.compiler.source>17</maven.compiler.source>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <dcm4che.ver>5.29.2</dcm4che.ver>
+    <maven.compiler.target>21</maven.compiler.target>
+    <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
+    <dcm4che.ver>5.33.0</dcm4che.ver>
+    <maven.compiler.source>21</maven.compiler.source>
   </properties>
 </project>

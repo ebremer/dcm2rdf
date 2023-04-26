@@ -1,42 +1,63 @@
 package com.ebremer.dcm2rdf;
 
-import static com.ebremer.dcm2rdf.Utils.GetFree;
-import static com.ebremer.dcm2rdf.Utils.GetMax;
-import static com.ebremer.dcm2rdf.Utils.GetTotal;
-import java.io.File;
+import com.ebremer.dcm2rdf.DirectoryProcessor.FileType;
+import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOM;
+import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOMDIR;
+import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.TAR;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
-import java.util.zip.GZIPOutputStream;
+import me.tongfei.progressbar.ProgressBar;
+import me.tongfei.progressbar.ProgressBarBuilder;
+import me.tongfei.progressbar.ProgressBarStyle;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.RDFFormat;
 
 /**
  *
  * @author erich
  */
 public class DirectoryProcessor {
-    public enum FileType {DICOM, HL7, XML, CSV, DFIX};
+    public enum FileType {DIRECTORY, DICOMDIR, DICOM, TAR, UNKNOWN};
     public Model buffer = ModelFactory.createDefaultModel();
     private final Parameters params;
+    private final FileCounter fc;
+    private final ProgressBar progressBar;
+    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
     
     public DirectoryProcessor(Parameters params) {
-        if (params.upd==null) {
-            params.upd = params.dest;
+        String os = System.getProperty("os.name").toLowerCase();
+        ProgressBarStyle style;
+        if (os.contains("win")) {
+            style = ProgressBarStyle.ASCII;
+        } else {
+            style = ProgressBarStyle.COLORFUL_UNICODE_BLOCK;
+        }
+        fc = new FileCounter();
+        if (params.status) {
+            progressBar = new ProgressBarBuilder()
+                .setTaskName("Extracting DICOM Metadata...")
+                .setInitialMax(0)
+                .setStyle(style)
+                .build();
+        } else {
+            progressBar = null;
         }
         this.params = params;
     }
@@ -44,128 +65,218 @@ public class DirectoryProcessor {
     public synchronized void AddModel(Model m) {
         buffer.add(m);
     }
-    
-    public void Traverse(Path src, Path dest, Path updates, String[] ext, FileType ftype, boolean compress) {
-    //    List<Future<Model>> futures = new ArrayList<>();
-        ThreadPoolExecutor engine = new ThreadPoolExecutor(params.cores,params.cores,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
-        engine.prestartAllCoreThreads();
-        try(Stream<Path> yay = Files.walk(src)) {
-            yay
+
+    public void Traverse(Parameters params, Set<FileType> allowedfiletypes, FileType ftype) {
+        //LinkedList<Future<Stat>> futures = new LinkedList<>();    
+        try (ThreadPoolExecutor engine = new ThreadPoolExecutor(params.threads, params.threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
+            engine.prestartAllCoreThreads();
+            Files.walk(params.src.toPath())                        
+                .parallel()
                 .filter(Objects::nonNull)
-                .filter(fff -> {
-                    for (String ext1 : ext) {
-                        if (fff.toFile().toString().toLowerCase().endsWith(ext1)) {
+                .filter(p->{
+                    if (p.toFile().isDirectory()) {
+                        if (params.status) fc.incrementDirectoryCount();
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(p->{
+                    FileType ft = Utils.getFileType(p);
+                    switch (ft) {
+                        case FileType.DIRECTORY -> {
+                            if (params.status) fc.incrementDirectoryCount();
+                            return false;
+                        }
+                        case FileType.DICOM -> {
+                            if (params.status) fc.incrementDicomFileCount();
                             return true;
                         }
-                    } 
-                    return false;
+                        case FileType.DICOMDIR -> {
+                            if (params.status) fc.incrementDicomFileCount();
+                            return true;
+                        }
+                        case FileType.TAR -> {
+                            if (params.status) fc.incrementTarFileCount();
+                            return true;
+                        }
+                        default -> {
+                            if (params.status) fc.incrementOtherFileCount();
+                            return false;                            
+                        }
+                    }
+                })
+                .filter(p->{
+                    if (p.toFile().length()>0) {
+                        return true;
+                    }
+                    logger.log(Level.SEVERE, "Zero Length File", p);
+                    if (params.status) fc.incrementZeroLengthFileCount();
+                    return false;                
                 })
                 .forEach(p->{
-                    //while (engine.getActiveCount()>1000) { 
-                        //wait
-                    //}
-                    //Callable<Model> worker = 
-                    engine.submit(new FileProcessor(params,p,ftype));
-                    //futures.add();
+                    FileType ft = Utils.getFileType(p);
+                    if (params.status) {
+                        progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
+                        progressBar.stepTo(engine.getCompletedTaskCount());
+                    }
+                    engine.submit(new FileProcessor(params,fc,ft,p));
+            //        Future<Stat> worker;
+              //          futures.add(worker);
                 });
+            engine.shutdown();
+            while (!engine.isTerminated()) {
+                if (params.status) {
+                    progressBar.stepTo(engine.getCompletedTaskCount());
+                    progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
+                }                
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                    logger.severe(ex.getMessage());
+                }
+            }
         } catch (IOException ex) {
             Logger.getLogger(DirectoryProcessor.class.getName()).log(Level.SEVERE, null, ex);
         }
-        int cc = 0;
-        while ((engine.getActiveCount()+engine.getQueue().size())>0) {
-            if ((cc%10000)==0) {
-                System.out.println("All jobs submitted...waiting for "+(engine.getActiveCount()+engine.getQueue().size()));
-                cc=0;
-            }
-            cc++;
+        if (params.status) {
+            System.out.println("\n"+fc);
         }
-        System.out.println("Engine shutdown");
-        engine.shutdown();
-    }
-    
-    public static String[] GetExtensions(FileType ftype) {
-        return switch (ftype) {
-            case DICOM -> new String[] {"dcm", "DCM", "dat", "DAT"};
-            default -> null;
-        };
     }
     
     public void Protocol(FileType ftype) {
-        System.out.println("Available # of cores : "+Runtime.getRuntime().availableProcessors());
-        System.out.println( "free memory: " + GetFree()+" Total : "+GetTotal()+"  Max: "+GetMax() );
-        System.out.println("Number of cores being used : "+params.cores);
-        Traverse(params.src.toPath(),params.dest.toPath(), params.upd.toPath(), GetExtensions(ftype), ftype, params.compress);
-        System.out.println("Done.");
+        Set<FileType> subset = EnumSet.of(FileType.DICOM, FileType.TAR);
+        Traverse(params, subset, ftype);
     }
 }
 
 class FileProcessor implements Callable<Model> {
     private final Path file;
-    private final DirectoryProcessor.FileType ftype;
     private final Parameters params;
+    private final FileCounter fc;
+    private final DirectoryProcessor.FileType ft;
+    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
 
-    public FileProcessor(Parameters params, Path file, DirectoryProcessor.FileType ftype) {
+    public FileProcessor(Parameters params, FileCounter fc, DirectoryProcessor.FileType ft, Path file) {
         this.params = params;
-        this.ftype = ftype;
+        this.fc = fc;
+        this.ft = ft;
         this.file = file;
     }
     
-    @Override
-    public Model call() {
-        System.out.println("Processing "+file.toString());
-        Model m = null;
-        String frag = params.src.toPath().relativize(file).toString();
-        if (frag.endsWith(".gz")) {
-            frag = frag.substring(0, frag.length()-7)+".ttl";
-        } else {
-            frag = frag.substring(0, frag.length()-4)+".ttl";
+    public Model ScanMeta(Parameters params, Path file, byte[] bytes) {
+        DCM2RDFConverter d2r = new DCM2RDFConverter(params);
+        Model m = d2r.ProcessDICOMasBytes2Model(this.file, bytes);        
+        Statistics.getStatistics().AddFile(bytes.length, 1);
+        if (params.oid) {
+            m = d2r.OptimizeRDF0(m);
         }
-        if (params.compress) {
-            frag = frag +".gz";
-        }
-        Path tar = Paths.get(params.dest.toPath().toString() + File.separatorChar+frag);
-        if (tar.toFile().exists()&&tar.toFile().length()==0) {
-            tar.toFile().delete();
-        }
-        if (!tar.toFile().exists()) {
-            switch(ftype) {
-                case DICOM:
-                    DCM2RDFLIB d2r = new DCM2RDFLIB();
-                    m = d2r.ProcessDICOMFile(file);
-                    if (!params.LongForm) {
-                        d2r.OptimizeRDF(m);
-                    }
-                    m.setNsPrefix("dcm", "http://dicom.nema.org/medical/dicom/ns#");
-                    m.setNsPrefix("bib", "http://id.loc.gov/ontologies/bibframe/");
-                    m.setNsPrefix("cry", "http://id.loc.gov/vocabulary/preservation/cryptographicHashFunctions/");
-                    break;
-            }
-            if (m!=null) {
-                Path dump = Paths.get(params.upd.toPath().toString() + File.separatorChar+frag);                        
-                DumpModel(m,dump,params.compress);
-            }
+        if (!params.LongForm) {            
+            m = d2r.OptimizeRDF1(m);
+            m = d2r.OptimizeRDF2(m);
+            m = d2r.OptimizeRDF3(m);
         }
         return m;
     }
     
-    public void DumpModel(Model m, Path file, boolean compress) {
-        if (!file.getParent().toFile().exists()) {
-            file.getParent().toFile().mkdirs();
+    private byte[] Load(InputStream is) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try {
+            is.transferTo(bos);
+        } catch (IOException ex) {
+            Logger.getLogger(DirectoryProcessor.class.getName()).log(Level.SEVERE, null, ex);
         }
-        if (compress) {
-            try (OutputStream fos = new GZIPOutputStream(new FileOutputStream(file.toFile()))) {
-                RDFDataMgr.write(fos, m, RDFFormat.TURTLE_PRETTY);
-            } catch (FileNotFoundException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (IOException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
-            } 
-        } else {
-            try (FileOutputStream fos = new FileOutputStream(file.toFile())) {
-                RDFDataMgr.write(fos, m, RDFFormat.TURTLE_PRETTY);
-            } catch (IOException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
+        return bos.toByteArray();
+    }
+        
+    private void ProcessTar(TarArchiveInputStream tarInput, Path root) throws IOException {
+        TarArchiveEntry ce = tarInput.getNextEntry();
+        while (ce != null) {            
+            if (ce.isDirectory()) {
+                if (params.status) fc.incrementTarDirectoryCount();
+            } else {
+                if (ce.getSize()==0) {
+                    if (params.status) fc.incrementZeroLengthFileCount();
+                    logger.log(Level.SEVERE, "Zero Length File", Path.of(root.toString(), ce.getName()));
+                } else {
+                    FileType tft = Utils.getFileType(ce.getName());
+                    switch(tft) {
+                        case DICOM -> {
+                            if (params.status) fc.incrementTarDicomFileCount();
+                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), Load(tarInput));
+                        }
+                        case DICOMDIR -> {
+                            if (params.status) fc.incrementTarDicomFileCount();
+                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), Load(tarInput));
+                        }
+                        case TAR -> {
+                            if (params.status) fc.incrementTarFileCount();
+                            ProcessTar(tarInput, Path.of(root.toString(), ce.getName()));
+                        }
+                        default -> fc.incrementTarOtherFileCount();
+                    }
+                }                
+            }
+            ce = tarInput.getNextEntry();
+        }
+    }
+    
+    private void ProcessDICOM(Parameters params, String root, byte[] buffer) {
+        Path dest = Paths.get(root+(params.compress?".ttl.gz":".ttl"));
+        if ( !dest.toFile().exists() || params.overwrite ) {
+            Model m = ScanMeta(params, Path.of(root), buffer);
+            if (dest.toFile().exists()) {
+                dest.toFile().delete();
+            }
+            if ((m!=null)&&(m.size()!=0)) {                                
+                Utils.DumpModel(m,dest,params.compress);
+            }
+            if (!file.toFile().exists()) {
+                System.out.println("Failed to create : "+file);
             }
         }
+    }
+
+    @Override
+    public Model call() {
+        String frag = Path.of(params.dest.toString(), params.src.toPath().relativize(file).toString()).toString();
+        switch (ft) {
+            case DICOM -> {
+                try (FileInputStream fis = new FileInputStream(file.toFile())) {
+                    frag = frag.substring(0, frag.length()-4);
+                    Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
+                    if (!xdest.toFile().exists() || params.overwrite) {
+                        ProcessDICOM(params, frag, Load(fis));
+                    }
+                } catch (FileNotFoundException ex) {
+                    logger.severe(ex.getMessage());
+                } catch (IOException ex) {
+                    logger.severe(ex.getMessage());
+                }
+            }
+            case DICOMDIR -> {
+                try (FileInputStream fis = new FileInputStream(file.toFile())) {
+                    Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
+                    if (!xdest.toFile().exists() || params.overwrite) {
+                        ProcessDICOM(params, frag, Load(fis));
+                    }
+                } catch (FileNotFoundException ex) {
+                    logger.severe(ex.getMessage());
+                } catch (IOException ex) {
+                    logger.severe(ex.getMessage());
+                }
+            }
+            case TAR -> {         
+                try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(file.toFile()))) {
+                    ProcessTar(tarInput, Path.of(frag));
+                } catch (IOException ex) {
+                    logger.severe(ex.getMessage());
+                }
+            }
+            default -> {
+                logger.log(Level.SEVERE, "Converting FAIL : {0}", file);
+                fc.incrementFailedConversionFileCount();
+            }
+        }
+        return null;
     }
 }

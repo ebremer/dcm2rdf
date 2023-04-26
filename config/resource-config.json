@@ -1,27 +1,86 @@
 {
   "resources":{
-  "includes":[
-    {
-      "pattern":"\\QMETA-INF/services/org.apache.jena.sys.JenaSubsystemLifecycle\\E"
-    }, 
-    {
-      "pattern":"\\Qorg/apache/jena/arq/arq-properties.xml\\E"
-    }, 
-    {
-      "pattern":"\\Qorg/apache/jena/jena-properties.xml\\E"
-    }, 
-    {
-      "pattern":"\\Qorg/apache/jena/tdb/tdb-properties.xml\\E"
-    }, 
-    {
-      "pattern":"\\Qorg/apache/jena/tdb2/tdb2-properties.xml\\E"
-    }, 
-    {
-      "pattern":"\\Qorg/slf4j/impl/StaticLoggerBinder.class\\E"
-    }
-  ]},
+  "includes":[{
+    "pattern":"\\QMETA-INF/maven/org.jline/jline-native/pom.properties\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/ch.qos.logback.classic.spi.Configurator\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.lang.System$LoggerFinder\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.net.spi.URLStreamHandlerProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.nio.channels.spi.SelectorProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.nio.charset.spi.CharsetProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.time.zone.ZoneRulesProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.util.spi.ResourceBundleControlProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/javax.script.ScriptEngineFactory\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/javax.xml.parsers.DocumentBuilderFactory\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/javax.xml.parsers.SAXParserFactory\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/javax.xml.stream.XMLInputFactory\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.apache.jena.sys.JenaSubsystemLifecycle\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.dcm4che3.data.ElementDictionary\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.slf4j.spi.SLF4JServiceProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org/jline/terminal/provider/exec\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org/jline/terminal/provider/ffm\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org/jline/terminal/provider/jansi\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org/jline/terminal/provider/jna\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org/jline/terminal/provider/jni\\E"
+  }, {
+    "pattern":"\\Qetc/location-mapping.rdf\\E"
+  }, {
+    "pattern":"\\Qetc/location-mapping.ttl\\E"
+  }, {
+    "pattern":"\\Qlocation-mapping.rdf\\E"
+  }, {
+    "pattern":"\\Qlocation-mapping.ttl\\E"
+  }, {
+    "pattern":"\\Qlogback-test.scmo\\E"
+  }, {
+    "pattern":"\\Qlogback-test.xml\\E"
+  }, {
+    "pattern":"\\Qlogback.scmo\\E"
+  }, {
+    "pattern":"\\Qlogback.xml\\E"
+  }, {
+    "pattern":"\\Qorg/apache/jena/ext/xerces/impl/xpath/regex/message.properties\\E"
+  }, {
+    "pattern":"\\Qorg/apache/jena/ext/xerces/impl/xpath/regex/message_en.properties\\E"
+  }, {
+    "pattern":"\\Qorg/jline/nativ/Linux/x86_64/libjlinenative.so\\E"
+  }, {
+    "pattern":"\\Qorg/jline/utils/capabilities.txt\\E"
+  }, {
+    "pattern":"\\Qorg/jline/utils/xterm-256color.caps\\E"
+  }, {
+    "pattern":"\\Qshacl.ttl\\E"
+  }, {
+    "pattern":"java.logging:\\Qsun/util/logging/resources/logging_en.properties\\E"
+  }, {
+    "pattern":"java.xml:\\Qjdk/xml/internal/jdkcatalog/JDKCatalog.xml\\E"
+  }]},
   "bundles":[{
-      "name":"org.apache.jena.ext.xerces.impl.xpath.regex.message",
-      "locales":[""]
-    }]
+    "name":"org.apache.jena.ext.xerces.impl.xpath.regex.message",
+    "locales":["en"]
+  }, {
+    "name":"sun.text.resources.cldr.FormatData",
+    "locales":["en", "und"]
+  }, {
+    "name":"sun.util.resources.cldr.CalendarData",
+    "locales":["und"]
+  }]
 }

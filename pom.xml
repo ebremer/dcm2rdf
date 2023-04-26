@@ -3,45 +3,68 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.ebremer</groupId>
     <artifactId>dcm2rdf</artifactId>
-    <version>0.0.0</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <compilerArgs>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
-        <dcm4che.ver>5.29.2</dcm4che.ver>
+        <dcm4che.ver>5.33.0</dcm4che.ver>
     </properties>
     <dependencies>
         <dependency>
             <groupId>org.apache.jena</groupId>
             <artifactId>apache-jena-libs</artifactId>
-            <version>4.8.0</version>
+            <version>5.2.0</version>
             <type>pom</type>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>jcl-over-slf4j</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
-            <groupId>com.beust</groupId>
+            <groupId>org.jcommander</groupId>
             <artifactId>jcommander</artifactId>
-            <version>1.82</version>
+            <version>2.0</version>
         </dependency>
         <dependency>
-            <groupId>org.glassfish</groupId>
-            <artifactId>javax.json</artifactId>
-            <version>1.1.4</version>
-        </dependency>
-        <dependency>
-            <groupId>javax.json</groupId>
-            <artifactId>javax.json-api</artifactId>
-            <version>1.1.4</version>
-        </dependency>
-                <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-core</artifactId>
             <version>${dcm4che.ver}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>org.slf4j</artifactId>
+                    <groupId>slf4j-api</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-json</artifactId>
+            <version>${dcm4che.ver}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.dcm4che</groupId>
+            <artifactId>dcm4che-imageio</artifactId>
             <version>${dcm4che.ver}</version>
         </dependency>
         <dependency>
@@ -53,17 +76,24 @@
             <groupId>org.dcm4che.tool</groupId>
             <artifactId>dcm4che-tool-common</artifactId>
             <version>${dcm4che.ver}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.dcm4che.tool</groupId>
             <artifactId>dcm4che-tool-dcm2jpg</artifactId>
             <version>${dcm4che.ver}</version>
-        </dependency>        
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-imageio</artifactId>
-            <version>${dcm4che.ver}</version>
-        </dependency>    
+            <exclusions>
+                <exclusion>
+                    <artifactId>ch.qos.logback</artifactId>
+                    <groupId>logback-classic</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency> 
         <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-imageio-opencv</artifactId>
@@ -73,6 +103,12 @@
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-image</artifactId>
             <version>${dcm4che.ver}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency> 
         <dependency>
             <groupId>org.dcm4che</groupId>
@@ -80,16 +116,75 @@
             <version>${dcm4che.ver}</version>
             <type>jar</type>
         </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.8</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.jts</groupId>
+            <artifactId>jts-core</artifactId>
+            <version>1.20.0</version>
+        </dependency>   
+        <dependency>
+            <groupId>me.tongfei</groupId>
+            <artifactId>progressbar</artifactId>
+            <version>0.10.1</version>
+        </dependency>             
     </dependencies>
     <profiles>
         <profile>
-            <id>dcm2rdf</id>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>0.10.3</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <imageName>dcm2rdf</imageName>
+                            <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
+                            <debug>true</debug>
+                            <skipNativeTests>true</skipNativeTests>
+                            <verbose>true</verbose>
+                            <buildArgs>
+                                <buildArg>--no-fallback</buildArg>
+                                <buildArg>-H:ConfigurationFileDirectories=config</buildArg>
+                                <buildArg>--enable-url-protocols=https</buildArg>
+                                <buildArg>-H:+AddAllCharsets</buildArg>
+                                <buildArg>-march=native</buildArg>
+                                <buildArg>--no-server</buildArg>
+                                <buildArg>-J-Xmx32G</buildArg>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>jar</id>
             <build>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-shade-plugin</artifactId>
-                        <version>3.4.1</version>
+                        <version>3.6.0</version>
                         <configuration>
                             <shadedArtifactAttached>false</shadedArtifactAttached>
                             <transformers>
@@ -121,36 +216,6 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <plugin>
-                        <groupId>org.graalvm.buildtools</groupId>
-                        <artifactId>native-maven-plugin</artifactId>
-                        <version>0.9.21</version>
-                        <extensions>true</extensions>
-                        <executions>
-                            <execution>
-                                <id>build-native</id>
-                                <goals>
-                                    <goal>build</goal>
-                                </goals>
-                                <phase>package</phase>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <imageName>dcm2rdf</imageName>
-                            <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
-                            <debug>true</debug>
-                            <skipNativeBuild>true</skipNativeBuild>
-                            <skipNativeTests>true</skipNativeTests>
-                            <verbose>true</verbose>
-                            <buildArgs>
-                                <buildArg>--no-fallback</buildArg>
-                                <buildArg>-H:ConfigurationFileDirectories=config</buildArg>
-                                <buildArg>--enable-url-protocols=https</buildArg>
-                                <buildArg>-H:+AddAllCharsets</buildArg>
-                                <buildArg>--static</buildArg>
-                            </buildArgs>
-                        </configuration>
-                    </plugin>
                 </plugins>
             </build>
         </profile>
@@ -162,5 +227,4 @@
             <url>https://www.dcm4che.org/maven2</url>
         </repository>
     </repositories>
-
 </project>
