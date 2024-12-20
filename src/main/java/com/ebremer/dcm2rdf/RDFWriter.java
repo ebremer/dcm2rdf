@@ -65,7 +65,6 @@ import static org.dcm4che3.data.VR.UV;
 import org.dcm4che3.data.Value;
 import org.dcm4che3.io.DicomInputHandler;
 import org.dcm4che3.io.DicomInputStream;
-import org.dcm4che3.util.Base64;
 import org.dcm4che3.util.TagUtils;
 
 /**
@@ -175,6 +174,9 @@ public class RDFWriter implements DicomInputHandler {
             dis.readValue(dis, attrs);
         } else if (dis.isExcludeBulkData()) {
             dis.readValue(dis, attrs);
+// skip annotation data.  Too bulky for the moment
+        } else if (TagUtils.toHexString(tag).equals("00660016")) {
+            dis.readValue(dis, attrs);
         } else {
             Resource bnode = m.createResource();    
             stack.peek().addProperty(m.createProperty(DCM.NS, TagUtils.toHexString(tag)), bnode);
@@ -235,14 +237,20 @@ public class RDFWriter implements DicomInputHandler {
             } else {
                 try {
                     switch (vr) {
-                        case DA -> arrays.peek().array().add(Convert.toDate(s));
+                        case DA -> arrays.peek().array().add(Convert.toDA(s));
                         case DS -> arrays.peek().array().add(Convert.toDS(s));
                         case IS -> arrays.peek().array().add(Convert.toIS(s));
                         case PN -> writePersonName(s);
-                        case TM -> arrays.peek().array().add(Convert.toTime(s));
+                        case TM -> arrays.peek().array().add(Convert.toTM(s));
                         default -> arrays.peek().array().add(m.createTypedLiteral(s));
                     }
+                } catch (VRFormatException err) {
+                    logger.log(Level.WARNING, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), root});
+                    arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
+                    root.addLiteral(DCM.invalidSOPInstance, true);
+                    validSOP = false;
                 } catch (NumberFormatException err) {
+                    logger.log(Level.WARNING, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), root});
                     arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
                     root.addLiteral(DCM.invalidSOPInstance, true);
                     validSOP = false;                    
@@ -372,15 +380,8 @@ public class RDFWriter implements DicomInputHandler {
     private void writeInlineBinary(VR vr, byte[] b, boolean bigEndian, boolean preserve) {
         if (bigEndian) {
             b = vr.toggleEndian(b, preserve);
-        }
-        stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(encodeBase64(b), XSDDatatype.XSDbase64Binary));
-    }
-
-    private String encodeBase64(byte[] b) {
-        int len = (b.length * 4 / 3 + 3) & ~3;
-        char[] ch = new char[len];
-        Base64.encode(b, 0, b.length, ch, 0);
-        return new String(ch);
+        }       
+        stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(java.util.Base64.getEncoder().encodeToString(b), XSDDatatype.XSDbase64Binary));
     }
 
     private void writeBulkData(BulkData blkdata) {
@@ -437,7 +438,7 @@ public class RDFWriter implements DicomInputHandler {
     @Override
     public void endDataset(DicomInputStream dis) throws IOException {
         if (!validSOP) {
-            logger.log(Level.WARNING, "Invalid SOP", file);
+            logger.log(Level.WARNING, "Invalid SOP -> {0}", file);
         }
     }
 }

@@ -21,12 +21,12 @@ import org.apache.jena.shacl.vocabulary.SHACLM;
  * @author erich
  */
 public class SHACL {
-    private SHACL shacl = null;
     private HashSet<String> onlyone;
     private Model m;
     
     private SHACL() {        
         m = ModelFactory.createDefaultModel();
+        m.setNsPrefix("sh", SHACLM.NS);
         try (InputStream fis = Thread.currentThread().getContextClassLoader().getResourceAsStream("shacl.ttl")) {
             RDFDataMgr.read(m, fis, Lang.TURTLE);
         } catch (FileNotFoundException ex) {

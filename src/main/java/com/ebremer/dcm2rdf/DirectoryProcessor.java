@@ -176,7 +176,7 @@ class FileProcessor implements Callable<Model> {
             m = d2r.OptimizeRDF3(m);
         }
         return m;
-    }
+    }  
     
     private byte[] Load(InputStream is) {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();

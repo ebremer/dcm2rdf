@@ -1,21 +1,14 @@
 package com.ebremer.dcm2rdf;
 
-import jakarta.json.Json;
-import jakarta.json.stream.JsonGenerator;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -40,9 +33,9 @@ import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
 import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
-import org.dcm4che3.json.JSONWriter;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LinearRing;
@@ -56,63 +49,16 @@ public class DCM2RDFConverter {
     private final Parameters params;
     private static final Logger logger = java.util.logging.Logger.getLogger(dcm2rdf.class.getName());
     
+    public DCM2RDFConverter() {
+        this(new Parameters());
+    }
+    
     public DCM2RDFConverter(Parameters params) {
         this.params = params;
     }
     
-    private JsonGenerator createGenerator(OutputStream out) {
-        Map<String, Object> conf = new HashMap<>(2);
-        conf.put(JsonGenerator.PRETTY_PRINTING, null);
-        return Json.createGeneratorFactory(conf).createGenerator(out);
-    }
-    
-    public String toJson(File file) {
-        try (
-            DicomInputStream dis = new DicomInputStream(file);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            JsonGenerator jsonGen = createGenerator(baos);
-        )
-        {
-            dis.setIncludeBulkData(IncludeBulkData.URI);
-            dis.setBulkDataDirectory(null);
-            dis.setBulkDataFilePrefix("blk");
-            dis.setBulkDataFileSuffix(null);
-            dis.setConcatenateBulkDataFiles(false);
-            JSONWriter jsonWriter = new JSONWriter(jsonGen);
-            dis.setDicomInputHandler(jsonWriter);
-            dis.readDatasetUntilPixelData();
-            jsonGen.flush();
-            return baos.toString();
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Conversion issue with {0}", file);
-        }
-        return null;
-    }
-    
-    public String toJson(Path file, byte[] bytes) {
-        try (
-            InputStream targetStream = new ByteArrayInputStream(bytes);
-            DicomInputStream dis = new DicomInputStream(targetStream);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            JsonGenerator jsonGen = createGenerator(baos);
-        )
-        {
-            dis.setIncludeBulkData(IncludeBulkData.URI);
-            dis.setBulkDataDirectory(null);
-            dis.setBulkDataFilePrefix("blk");
-            dis.setBulkDataFileSuffix(null);
-            dis.setConcatenateBulkDataFiles(false);
-            JSONWriter jsonWriter = new JSONWriter(jsonGen);
-            dis.setDicomInputHandler(jsonWriter);
-            dis.readDatasetUntilPixelData();
-            jsonGen.flush();
-            return baos.toString();
-        } catch (EOFException ex) {
-            logger.log(Level.SEVERE, "End of File {0}", file);
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Conversion issue with {0}", file);
-        }
-        return "";
+    public Parameters getParameters() {
+        return this.params;
     }
     
     public Model toModel(Resource root, Path file, byte[] bytes) {
@@ -120,11 +66,12 @@ public class DCM2RDFConverter {
             InputStream targetStream = new ByteArrayInputStream(bytes);
             DicomInputStream dis = new DicomInputStream(targetStream);
         ){
-            dis.setIncludeBulkData(IncludeBulkData.URI);            
-            dis.setBulkDataDirectory(null);
-            dis.setBulkDataFilePrefix("blk");
-            dis.setBulkDataFileSuffix(null);
-            dis.setConcatenateBulkDataFiles(false);
+            //dis.setIncludeBulkData(IncludeBulkData.URI);           
+            dis.setIncludeBulkData(IncludeBulkData.NO);
+            //dis.setBulkDataDirectory(null);
+            //dis.setBulkDataFilePrefix("blk");
+            //dis.setBulkDataFileSuffix(null);
+            //dis.setConcatenateBulkDataFiles(false);
             RDFWriter rdfwriter = new RDFWriter(file, root);
             dis.setDicomInputHandler(rdfwriter);
             dis.readDatasetUntilPixelData();
@@ -135,6 +82,39 @@ public class DCM2RDFConverter {
         }
         return root.getModel();
     }
+    
+    public Model toModel(Resource root, Path file, InputStream is) {
+        try (
+            DicomInputStream dis = new DicomInputStream(is);
+        ){
+            //dis.setIncludeBulkData(IncludeBulkData.URI);   
+            dis.setIncludeBulkData(IncludeBulkData.NO);
+            //dis.setBulkDataDirectory(null);
+            //dis.setBulkDataFilePrefix("blk");
+            //dis.setBulkDataFileSuffix(null);
+            //dis.setConcatenateBulkDataFiles(false);
+            RDFWriter rdfwriter = new RDFWriter(file, root);
+            dis.setDicomInputHandler(rdfwriter);
+            dis.readDatasetUntilPixelData();
+        } catch (EOFException ex) {
+            logger.log(Level.SEVERE, "End of File", root);
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Problem with File {0}", root);
+        }
+        return root.getModel();
+    }
+    
+    public Model Optimize(Model m) {        
+        if (params.oid) {
+            m = OptimizeRDF0(m);
+        }
+        if (!params.LongForm) {            
+            m = OptimizeRDF1(m);
+            m = OptimizeRDF2(m);
+            m = OptimizeRDF3(m);
+        }
+        return m;
+    }  
 
     public Model ProcessDICOMasBytes2Model(Path file, byte[] bytes) {
         Model m = ModelFactory.createDefaultModel();     
@@ -249,20 +229,20 @@ public class DCM2RDFConverter {
             """));
         // Remove VRs 
         request.add(PSS.get(
-                """
-                delete {
-                    ?s ?prop ?node .
-                    ?node dcm:vr ?vr; dcm:Value ?value
-                }
-                insert {
-                    ?s ?prop ?value
-                }
-                where {
-                    ?s ?prop ?node .
-                    ?node dcm:vr ?vr; dcm:Value ?value
-                    filter(dcm:isEvenDicomTag(?prop))
-                }
-                """));        
+            """
+            delete {
+                ?s ?prop ?node .
+                ?node dcm:vr ?vr; dcm:Value ?value
+            }
+            insert {
+                ?s ?prop ?value
+            }
+            where {
+                ?s ?prop ?node .
+                ?node dcm:vr ?vr; dcm:Value ?value
+                filter(dcm:isEvenDicomTag(?prop))
+            }
+            """));        
         UpdateAction.execute(request,m);
         return m;
     }
@@ -270,11 +250,42 @@ public class DCM2RDFConverter {
     public Model OptimizeRDF2(Model m) {
         // remove rdf:List where VM is always 1
         Dataset ds = DatasetFactory.create();
-        ds.setDefaultModel(m);
-        Model src = SHACL.getInstance().getModel();
-        Model shacl = ModelFactory.createDefaultModel();
-        shacl.add(src);
-        ds.addNamedModel("https://ebremer.com/dummy", shacl);       
+        ds.getDefaultModel().add(m);
+        ds.addNamedModel("https://ebremer.com/dummy/shacl", SHACL.getInstance().getModel());
+        
+        /*
+        String cmd = PSS.get(
+            """
+            select distinct ?s ?tag ?first
+            where {
+                ?s ?tag ?list .
+                ?list rdf:first ?first; rdf:rest rdf:nil
+                minus {?otherlist rdf:rest ?list }
+                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
+            }
+            """);
+        try (QueryExecution qexec = QueryExecutionFactory.create(cmd, ds)) {
+            ResultSet results = qexec.execSelect();
+            ResultSetFormatter.out(System.out, results);
+        }   
+        
+        String c = PSS.get(
+            """
+            construct {
+                ?s ?tag ?first
+            }
+            where {
+                ?s ?tag ?list .
+                ?list rdf:first ?first; rdf:rest rdf:nil
+                minus {?otherlist rdf:rest ?list }
+                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
+            }
+            """);
+        try (QueryExecution qexec = QueryExecutionFactory.create(c, ds)) {
+            Model wow = qexec.execConstruct();
+            wow.write(System.out, "TTL");
+        } 
+        */
         UpdateRequest request = UpdateFactory.create();
         request.add(PSS.get(
             """
@@ -289,11 +300,16 @@ public class DCM2RDFConverter {
                 ?s ?tag ?list .
                 ?list rdf:first ?first; rdf:rest rdf:nil
                 minus {?otherlist rdf:rest ?list }
-                {select distinct ?tag where { graph <https://ebremer.com/dummy> {?k sh:path ?tag; sh:maxCount 1 }}}
+                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
             }
             """));
+        //System.out.println("===================================================================================================");        
         UpdateAction.execute(request,ds);
-        return ds.getDefaultModel();
+        Model yah = ds.getDefaultModel();
+        yah.setNsPrefix("dcm", DCM.NS);
+        yah.setNsPrefix("xsd", XSD.NS);
+        //RDFDataMgr.write(System.out, yah, Lang.TURTLE);       
+        return yah;
     }
     
     public static void removeList(Resource listHead, Model model) {
@@ -372,7 +388,7 @@ public class DCM2RDFConverter {
                         removeList(list, m);
                         m.removeAll(null, DCM._30060050, list);
                     }
-                    default -> throw new Error("Unsupported Polygon type : "+type);
+                    //default -> throw new Error("Unsupported Polygon type : "+type);
                 }
             });
         return m;

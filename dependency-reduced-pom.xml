@@ -95,47 +95,6 @@
         </plugins>
       </build>
     </profile>
-    <profile>
-      <id>jar2</id>
-      <build>
-        <plugins>
-          <plugin>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.6.0</version>
-            <executions>
-              <execution>
-                <phase>package</phase>
-                <goals>
-                  <goal>shade</goal>
-                </goals>
-              </execution>
-            </executions>
-            <configuration>
-              <shadedArtifactAttached>false</shadedArtifactAttached>
-              <transformers>
-                <transformer>
-                  <mainClass>com.ebremer.dcm2rdf.dcm2rdf</mainClass>
-                  <manifestEntries>
-                    <Multi-Release>true</Multi-Release>
-                  </manifestEntries>
-                </transformer>
-                <transformer />
-              </transformers>
-              <filters>
-                <filter>
-                  <artifact>*:*</artifact>
-                  <excludes>
-                    <exclude>META-INF/*.SF</exclude>
-                    <exclude>META-INF/*.DSA</exclude>
-                    <exclude>META-INF/*.RSA</exclude>
-                  </excludes>
-                </filter>
-              </filters>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
   </profiles>
   <repositories>
     <repository>
@@ -164,10 +123,9 @@
     </dependency>
   </dependencies>
   <properties>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.target>21</maven.compiler.target>
     <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
-    <dcm4che.ver>5.33.0</dcm4che.ver>
-    <maven.compiler.source>21</maven.compiler.source>
+    <dcm4che.ver>5.33.1</dcm4che.ver>
   </properties>
 </project>

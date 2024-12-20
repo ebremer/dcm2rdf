@@ -22,7 +22,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
-        <dcm4che.ver>5.33.0</dcm4che.ver>
+        <dcm4che.ver>5.33.1</dcm4che.ver>
     </properties>
     <dependencies>
         <dependency>
