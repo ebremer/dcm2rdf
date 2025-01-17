@@ -1,4 +1,4 @@
-package com.ebremer.dcm2rdf;
+package com.ebremer.dcm2rdf.parameters;
 
 import com.beust.jcommander.IParameterValidator;
 

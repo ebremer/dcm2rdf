@@ -1,5 +1,7 @@
 package com.ebremer.dcm2rdf;
 
+import com.ebremer.dcm2rdf.utils.VRFormatException;
+import com.ebremer.dcm2rdf.ns.DCM;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;

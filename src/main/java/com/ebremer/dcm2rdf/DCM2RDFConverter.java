@@ -1,5 +1,15 @@
 package com.ebremer.dcm2rdf;
 
+import com.ebremer.dcm2rdf.utils.PSS;
+import com.ebremer.dcm2rdf.utils.HashGeneratorUtils;
+import com.ebremer.dcm2rdf.utils.SHACL;
+import com.ebremer.dcm2rdf.ns.GEO;
+import com.ebremer.dcm2rdf.parameters.Parameters;
+import com.ebremer.dcm2rdf.ns.PROVO;
+import com.ebremer.dcm2rdf.ns.LOC;
+import com.ebremer.dcm2rdf.ns.DCM;
+import com.ebremer.dcm2rdf.utils.Sha256CalculatingInputStream;
+import com.ebremer.dcm2rdf.utils.Statistics;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -7,6 +17,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -31,7 +42,6 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
-import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.io.DicomInputStream;
@@ -39,6 +49,7 @@ import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LinearRing;
+import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.io.WKTWriter;
 
 /**
@@ -48,6 +59,7 @@ import org.locationtech.jts.io.WKTWriter;
 public class DCM2RDFConverter {
     private final Parameters params;
     private static final Logger logger = java.util.logging.Logger.getLogger(dcm2rdf.class.getName());
+    private Optional<String> hash = Optional.empty();
     
     public DCM2RDFConverter() {
         this(new Parameters());
@@ -57,15 +69,16 @@ public class DCM2RDFConverter {
         this.params = params;
     }
     
+    public Optional<String> getHash() {
+        return hash;
+    }
+    
     public Parameters getParameters() {
         return this.params;
     }
     
     public Model toModel(Resource root, Path file, byte[] bytes) {
-        try (
-            InputStream targetStream = new ByteArrayInputStream(bytes);
-            DicomInputStream dis = new DicomInputStream(targetStream);
-        ){
+        try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){
             //dis.setIncludeBulkData(IncludeBulkData.URI);           
             dis.setIncludeBulkData(IncludeBulkData.NO);
             //dis.setBulkDataDirectory(null);
@@ -73,7 +86,7 @@ public class DCM2RDFConverter {
             //dis.setBulkDataFileSuffix(null);
             //dis.setConcatenateBulkDataFiles(false);
             RDFWriter rdfwriter = new RDFWriter(file, root);
-            dis.setDicomInputHandler(rdfwriter);
+            dis.setDicomInputHandler(rdfwriter);            
             dis.readDatasetUntilPixelData();
         } catch (EOFException ex) {
             logger.log(Level.SEVERE, "End of File", file);
@@ -84,23 +97,47 @@ public class DCM2RDFConverter {
     }
     
     public Model toModel(Resource root, Path file, InputStream is) {
-        try (
-            DicomInputStream dis = new DicomInputStream(is);
-        ){
-            //dis.setIncludeBulkData(IncludeBulkData.URI);   
-            dis.setIncludeBulkData(IncludeBulkData.NO);
-            //dis.setBulkDataDirectory(null);
-            //dis.setBulkDataFilePrefix("blk");
-            //dis.setBulkDataFileSuffix(null);
-            //dis.setConcatenateBulkDataFiles(false);
-            RDFWriter rdfwriter = new RDFWriter(file, root);
-            dis.setDicomInputHandler(rdfwriter);
-            dis.readDatasetUntilPixelData();
-        } catch (EOFException ex) {
-            logger.log(Level.SEVERE, "End of File", root);
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Problem with File {0}", root);
-        }
+        if ( params.hash || params.naming.equals("SHA256") ) {
+            try (
+                Sha256CalculatingInputStream hashis = new Sha256CalculatingInputStream(is);
+                DicomInputStream dis = new DicomInputStream(hashis)
+            ){         
+                //dis.setIncludeBulkData(IncludeBulkData.URI);   
+                dis.setIncludeBulkData(IncludeBulkData.NO);
+                //dis.setBulkDataDirectory(null);
+                //dis.setBulkDataFilePrefix("blk");
+                //dis.setBulkDataFileSuffix(null);
+                //dis.setConcatenateBulkDataFiles(false);
+                RDFWriter rdfwriter = new RDFWriter(file, root);
+                dis.setDicomInputHandler(rdfwriter);
+                dis.readDatasetUntilPixelData();
+                hashis.readAllBytes();
+                this.hash = Optional.of(hashis.getSha256Hash());
+                Statistics.getStatistics().AddFile(file.toFile().length(), 1);
+                Statistics.getStatistics().AddActuallyRead(file.toFile().length());
+            } catch (EOFException ex) {
+                logger.log(Level.SEVERE, "End of File", root);
+            } catch (IOException ex) {
+                logger.log(Level.SEVERE, "Problem with File {0}", root);
+            } catch (NoSuchAlgorithmException ex) {
+                Logger.getLogger(DCM2RDFConverter.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        } else {
+            try (
+                DicomInputStream dis = new DicomInputStream(is)
+            ){         
+                dis.setIncludeBulkData(IncludeBulkData.NO);
+                RDFWriter rdfwriter = new RDFWriter(file, root);
+                dis.setDicomInputHandler(rdfwriter);
+                dis.readDatasetUntilPixelData();
+                Statistics.getStatistics().AddFile(file.toFile().length(), 1);
+                Statistics.getStatistics().AddActuallyRead(dis.getPosition());
+            } catch (EOFException ex) {
+                logger.log(Level.SEVERE, "End of File", root);
+            } catch (IOException ex) {
+                logger.log(Level.SEVERE, "Problem with File {0}", root);
+            }
+        }        
         return root.getModel();
     }
     
@@ -113,9 +150,60 @@ public class DCM2RDFConverter {
             m = OptimizeRDF2(m);
             m = OptimizeRDF3(m);
         }
+        if (params.listurn) {
+            m = ListURN(m);
+        }
         return m;
     }  
 
+    public Model ProcessDICOMasBytes2Model(Path file, InputStream is) {
+        Model m = ModelFactory.createDefaultModel();     
+        Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
+        root.addProperty(RDF.type, DCM.SOPInstance);
+        toModel(root, file, is);
+        if (params.hash) {
+            if (hash.isPresent()) {
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
+                root.addProperty(LOC.cryptographicHashFunctions.sha256, hash.get());
+            } else {
+                throw new Error("HASH not calculated : "+file.toString());
+            }
+        }
+        if (params.extra) {
+            m.setNsPrefix("bib", LOC.BibFrame.NS);
+            m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
+            try {
+                URI xx = file.toUri();
+                URI uri = new URI("file", "", xx.getPath(), null);
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));                
+            } catch (URISyntaxException ex) {
+                logger.log(Level.SEVERE, ex.getMessage(), file);
+            }
+            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(file.toFile().length()), XSDDatatype.XSDinteger ) );
+        }
+        m.setNsPrefix("dcm", DCM.NS);                        
+        Optional<String> uid = getSOPInstanceUID(m);
+        switch (params.naming) {
+            case "SHA256" -> {
+                if (hash.isPresent()) {                   
+                    Resource vv = m.createResource(String.format("urn:sha256:%s",hash.get()));
+                    m.removeAll(root, PROVO.wasDerivedFrom, vv);
+                    FlipURI(root.toString(), vv.toString(), m);                    
+                } else {
+                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                }
+            }
+            default -> {
+                if (uid.isPresent()) {
+                    FlipURI(root.toString(), "urn:oid:"+uid.get(), m);
+                } else {
+                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                }
+            }     
+        }
+        return m;
+    }    
+    
     public Model ProcessDICOMasBytes2Model(Path file, byte[] bytes) {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
@@ -125,14 +213,13 @@ public class DCM2RDFConverter {
             m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
             sha256Hash = Optional.of(HashGeneratorUtils.generateSHA256(bytes));
             if (sha256Hash.isPresent()) {
-                root.addProperty(OWL.sameAs, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, sha256Hash.get());
             }
-            URI uri;
             try {
                 URI xx = file.toUri();
-                uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(OWL.sameAs, m.createResource(uri.toString()));                
+                URI uri = new URI("file", "", xx.getPath(), null);
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));                
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
@@ -148,9 +235,8 @@ public class DCM2RDFConverter {
             case "SHA256" -> {
                 if (sha256Hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",sha256Hash.get()));
-                    m.removeAll(root, OWL.sameAs, vv);
-                    FlipURI(root.toString(), vv.toString(), m);
-                    
+                    m.removeAll(root, PROVO.wasDerivedFrom, vv);
+                    FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
                     throw new Error("File missing SOP Instance UID: "+file.toString());
                 }
@@ -346,12 +432,19 @@ public class DCM2RDFConverter {
         if (!coordinates.isEmpty() && !coordinates.get(0).equals(coordinates.get(coordinates.size() - 1))) {
             coordinates.add(coordinates.get(0));
         }
+        Coordinate[] coords = coordinates.toArray(new Coordinate[0]);
+        String wkt;
         GeometryFactory geometryFactory = new GeometryFactory();
-        LinearRing ring = geometryFactory.createLinearRing(coordinates.toArray(new Coordinate[0]));
-        org.locationtech.jts.geom.Polygon polygon = geometryFactory.createPolygon(ring);
-        WKTWriter wktWriter = new WKTWriter(3);
-        String wow = wktWriter.write(polygon);        
-        return rdfList.getModel().createTypedLiteral(wow, GEO.NS+"wktLiteral");
+        if (coords.length>1) {            
+            LinearRing ring = geometryFactory.createLinearRing(coords);
+            org.locationtech.jts.geom.Polygon polygon = geometryFactory.createPolygon(ring);
+            WKTWriter wktWriter = new WKTWriter(3);
+            wkt = wktWriter.write(polygon);
+        } else {
+            Point point = geometryFactory.createPoint(coords[0]);
+            wkt = point.toText();
+        }
+        return rdfList.getModel().createTypedLiteral(wkt, GEO.NS+"wktLiteral");
     }
 
     public static String convertRDFListXYToWKT(RDFList rdfList) {
@@ -413,6 +506,79 @@ public class DCM2RDFConverter {
                 }
                 """
             ), m);
+        return m;
+    }
+    
+    public Model ListURN(Model m) {
+        // generate list URIs
+        try {
+            ParameterizedSparqlString pss =PSS.getPSS(  
+                """            
+                delete {
+                    ?s ?tag ?list .
+                    ?list
+                        rdf:first ?first;
+                        rdf:rest ?rest
+                }
+                insert {
+                    ?s ?tag ?newlist .
+                    ?newlist
+                        rdf:first ?first;
+                        rdf:rest ?rest
+                }
+                where {
+                    ?s ?tag ?list .
+                    ?list
+                        rdf:first ?first;
+                        rdf:rest ?rest
+                    bind(iri(concat(str(?s), "/", STRAFTER(STR(?tag), ?ns))) as ?newlist)
+                    filter(?tag!=rdf:first)
+                    filter(?tag!=rdf:rest)
+                    filter(?tag!=dcm:Value)
+                }
+                """
+            );
+            pss.setLiteral("ns", DCM.NS);
+            UpdateAction.parseExecute(pss.toString(), m);
+        } catch (Exception ha) {
+            System.out.println(ha.getMessage());
+        }
+        return m;
+    }
+    
+    public Model ListURN2(Model m) {
+        // generate list URIs
+        try {
+            ParameterizedSparqlString pss = PSS.getPSS(  
+                """            
+                delete {
+                    ?ss ?pp ?node .
+                    ?node ?p ?o
+                }
+                insert {
+                    ?ss ?pp ?newnode .
+                    ?newnode ?p ?o
+                }
+                where {
+                    ?root ?tag ?list .
+                    ?list list:index (?index ?node) .
+                    ?node ?p ?o .
+                    ?ss ?pp ?node .
+                    filter(isblank(?node))
+                    filter(!isblank(?root))
+                    bind(iri(concat(str(?root), "/", STRAFTER(STR(?tag), ?ns), "/", str(?index))) as ?newnode)
+                    filter(strstarts(str(?tag), ?dcmNS))
+                }
+                """
+            );
+            pss.setLiteral("ns", DCM.NS);
+            pss.setLiteral("dcmNS", DCM.NS);
+            pss.setNsPrefix("list", "http://jena.apache.org/ARQ/list#");
+            pss.setNsPrefix("d2r", dcm2rdf.NS);
+            UpdateAction.parseExecute(pss.toString(), m);
+        } catch (Exception ha) {
+            System.out.println(ha.getMessage());
+        }
         return m;
     }
 }

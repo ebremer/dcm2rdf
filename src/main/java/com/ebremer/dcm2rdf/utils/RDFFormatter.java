@@ -1,4 +1,4 @@
-package com.ebremer.dcm2rdf;
+package com.ebremer.dcm2rdf.utils;
 
 import java.time.Instant;
 import java.time.ZoneId;

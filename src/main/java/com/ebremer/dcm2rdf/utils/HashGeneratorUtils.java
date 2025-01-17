@@ -1,4 +1,4 @@
-package com.ebremer.dcm2rdf;
+package com.ebremer.dcm2rdf.utils;
 
 import java.io.File;
 import java.io.FileInputStream;

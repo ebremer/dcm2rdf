@@ -1,5 +1,7 @@
 package com.ebremer.dcm2rdf;
 
+import com.ebremer.dcm2rdf.ns.GEO;
+import com.ebremer.dcm2rdf.ns.PROVO;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOM;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOMDIR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DIRECTORY;
@@ -13,16 +15,14 @@ import java.nio.file.Path;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.riot.RDFFormat;
-import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 
 
-public class Utils {
+public class RandomUtils {
     
     public static long GetTotal() {
         Runtime rt = Runtime.getRuntime();
@@ -70,7 +70,7 @@ public class Utils {
 
     public static void DumpModel(Model m, Path file, boolean compress) {
         m.setNsPrefix("xsd", XSD.NS);
-        m.setNsPrefix("owl", OWL.NS);
+        m.setNsPrefix("prov", PROVO.NS);
         m.setNsPrefix("rdf", RDF.uri);
         m.setNsPrefix("geo", GEO.NS);
         if (!file.getParent().toFile().exists()) {

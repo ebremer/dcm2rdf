@@ -1,10 +1,12 @@
 package com.ebremer.dcm2rdf;
 
+import com.ebremer.dcm2rdf.utils.Statistics;
+import com.ebremer.dcm2rdf.utils.FileCounter;
+import com.ebremer.dcm2rdf.parameters.Parameters;
 import com.ebremer.dcm2rdf.DirectoryProcessor.FileType;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOM;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOMDIR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.TAR;
-import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -81,7 +83,7 @@ public class DirectoryProcessor {
                     return true;
                 })
                 .filter(p->{
-                    FileType ft = Utils.getFileType(p);
+                    FileType ft = RandomUtils.getFileType(p);
                     switch (ft) {
                         case FileType.DIRECTORY -> {
                             if (params.status) fc.incrementDirectoryCount();
@@ -110,11 +112,12 @@ public class DirectoryProcessor {
                         return true;
                     }
                     logger.log(Level.SEVERE, "Zero Length File", p);
+                    Statistics.getStatistics().AddFile(0, 1);
                     if (params.status) fc.incrementZeroLengthFileCount();
                     return false;                
                 })
                 .forEach(p->{
-                    FileType ft = Utils.getFileType(p);
+                    FileType ft = RandomUtils.getFileType(p);
                     if (params.status) {
                         progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
                         progressBar.stepTo(engine.getCompletedTaskCount());
@@ -162,11 +165,10 @@ class FileProcessor implements Callable<Model> {
         this.ft = ft;
         this.file = file;
     }
-    
-    public Model ScanMeta(Parameters params, Path file, byte[] bytes) {
-        DCM2RDFConverter d2r = new DCM2RDFConverter(params);
-        Model m = d2r.ProcessDICOMasBytes2Model(this.file, bytes);        
-        Statistics.getStatistics().AddFile(bytes.length, 1);
+
+    public Model ScanMeta(Parameters params, Path file, InputStream is) {
+        DCM2RDFConverter d2r = new DCM2RDFConverter(params);     
+        Model m = d2r.ProcessDICOMasBytes2Model(this.file, is);                 
         if (params.oid) {
             m = d2r.OptimizeRDF0(m);
         }
@@ -175,19 +177,12 @@ class FileProcessor implements Callable<Model> {
             m = d2r.OptimizeRDF2(m);
             m = d2r.OptimizeRDF3(m);
         }
-        return m;
-    }  
-    
-    private byte[] Load(InputStream is) {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try {
-            is.transferTo(bos);
-        } catch (IOException ex) {
-            Logger.getLogger(DirectoryProcessor.class.getName()).log(Level.SEVERE, null, ex);
+        if (params.listurn) {
+            m = d2r.ListURN2(m);
         }
-        return bos.toByteArray();
+        return m;
     }
-        
+
     private void ProcessTar(TarArchiveInputStream tarInput, Path root) throws IOException {
         TarArchiveEntry ce = tarInput.getNextEntry();
         while (ce != null) {            
@@ -198,15 +193,15 @@ class FileProcessor implements Callable<Model> {
                     if (params.status) fc.incrementZeroLengthFileCount();
                     logger.log(Level.SEVERE, "Zero Length File", Path.of(root.toString(), ce.getName()));
                 } else {
-                    FileType tft = Utils.getFileType(ce.getName());
+                    FileType tft = RandomUtils.getFileType(ce.getName());
                     switch(tft) {
                         case DICOM -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), Load(tarInput));
+                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), tarInput);
                         }
                         case DICOMDIR -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), Load(tarInput));
+                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), tarInput);
                         }
                         case TAR -> {
                             if (params.status) fc.incrementTarFileCount();
@@ -220,15 +215,15 @@ class FileProcessor implements Callable<Model> {
         }
     }
     
-    private void ProcessDICOM(Parameters params, String root, byte[] buffer) {
+    private void ProcessDICOM(Parameters params, String root, InputStream is) {
         Path dest = Paths.get(root+(params.compress?".ttl.gz":".ttl"));
         if ( !dest.toFile().exists() || params.overwrite ) {
-            Model m = ScanMeta(params, Path.of(root), buffer);
+            Model m = ScanMeta(params, Path.of(root), is);
             if (dest.toFile().exists()) {
                 dest.toFile().delete();
             }
             if ((m!=null)&&(m.size()!=0)) {                                
-                Utils.DumpModel(m,dest,params.compress);
+                RandomUtils.DumpModel(m,dest,params.compress);
             }
             if (!file.toFile().exists()) {
                 System.out.println("Failed to create : "+file);
@@ -245,7 +240,7 @@ class FileProcessor implements Callable<Model> {
                     frag = frag.substring(0, frag.length()-4);
                     Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
                     if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, frag, Load(fis));
+                        ProcessDICOM(params, frag, fis);
                     }
                 } catch (FileNotFoundException ex) {
                     logger.severe(ex.getMessage());
@@ -257,7 +252,7 @@ class FileProcessor implements Callable<Model> {
                 try (FileInputStream fis = new FileInputStream(file.toFile())) {
                     Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
                     if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, frag, Load(fis));
+                        ProcessDICOM(params, frag, fis);
                     }
                 } catch (FileNotFoundException ex) {
                     logger.severe(ex.getMessage());
