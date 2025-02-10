@@ -42,6 +42,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.io.DicomInputStream;
@@ -164,6 +165,7 @@ public class DCM2RDFConverter {
         if (params.hash) {
             if (hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
+                //root.addProperty(OWL.sameAs, m.createResource(String.format("urn:sha256:%s",hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, hash.get());
             } else {
                 throw new Error("HASH not calculated : "+file.toString());
@@ -175,7 +177,8 @@ public class DCM2RDFConverter {
             try {
                 URI xx = file.toUri();
                 URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));                
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));
+                //root.addProperty(OWL.sameAs, m.createResource(uri.toString()));                
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
@@ -188,6 +191,7 @@ public class DCM2RDFConverter {
                 if (hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
+                    //m.removeAll(root, OWL.sameAs, vv);
                     FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
                     throw new Error("File missing SOP Instance UID: "+file.toString());
@@ -214,12 +218,14 @@ public class DCM2RDFConverter {
             sha256Hash = Optional.of(HashGeneratorUtils.generateSHA256(bytes));
             if (sha256Hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
+                //root.addProperty(OWL.sameAs, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, sha256Hash.get());
             }
             try {
                 URI xx = file.toUri();
                 URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));                
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));
+                //root.addProperty(OWL.sameAs, m.createResource(uri.toString()));                
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
@@ -236,6 +242,7 @@ public class DCM2RDFConverter {
                 if (sha256Hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",sha256Hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
+                    //m.removeAll(root, OWL.sameAs, vv);
                     FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
                     throw new Error("File missing SOP Instance UID: "+file.toString());
@@ -510,7 +517,7 @@ public class DCM2RDFConverter {
     }
     
     public Model ListURN(Model m) {
-        // generate list URIs
+        // Detlefication - generate list URIs 
         try {
             ParameterizedSparqlString pss =PSS.getPSS(  
                 """            
@@ -547,7 +554,7 @@ public class DCM2RDFConverter {
     }
     
     public Model ListURN2(Model m) {
-        // generate list URIs
+        // Detlefication - generate list URIs 
         try {
             ParameterizedSparqlString pss = PSS.getPSS(  
                 """            
