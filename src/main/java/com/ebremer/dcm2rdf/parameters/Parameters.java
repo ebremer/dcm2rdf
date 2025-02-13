@@ -21,13 +21,13 @@ public class Parameters {
     @Parameter(names = {"-c"}, converter = BooleanConverter.class, description = "results file will be gzipped compressed", validateWith = Dcm2RdfValidator.class, order = 3)
     public Boolean compress = false;
     
-    @Parameter(names = {"-L"}, converter = BooleanConverter.class, description = "Perform minimal conversion to RDF", validateWith = Dcm2RdfValidator.class, order = 4)
+    @Parameter(names = {"-L"}, converter = BooleanConverter.class, description = "Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!", validateWith = Dcm2RdfValidator.class, order = 4)
     public Boolean LongForm = false;    
     
-    @Parameter(names = {"-version","-v"}, converter = BooleanConverter.class, description = "Display software version.", validateWith = Dcm2RdfValidator.class, order = 5)
+    @Parameter(names = {"-version","-v"}, converter = BooleanConverter.class, description = "Display software version", validateWith = Dcm2RdfValidator.class, order = 5)
     public Boolean version = false;
     
-    @Parameter(names = {"-status"}, converter = BooleanConverter.class, description = "Display progression in real-time.", validateWith = Dcm2RdfValidator.class, order = 6)
+    @Parameter(names = {"-status"}, converter = BooleanConverter.class, description = "Display progress in real-time.", validateWith = Dcm2RdfValidator.class, order = 6)
     public Boolean status = false;
     
     @Parameter(names = {"-overwrite"}, converter = BooleanConverter.class, description = "Overwrite results files.", validateWith = Dcm2RdfValidator.class, order = 7)
@@ -39,7 +39,7 @@ public class Parameters {
     @Parameter(names = {"-extra"}, description = "Add source file URI, file size", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 9)
     public Boolean extra = false;
     
-   @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = true, validateWith = Dcm2RdfValidator.class, order = 10)
+    @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = true, validateWith = Dcm2RdfValidator.class, order = 10)
     public String naming = "SOPInstanceUID";
    
     @Parameter(names = {"-oid"}, description = "Convert UI VRs to urn:oid:<oid>", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 11)
@@ -50,7 +50,13 @@ public class Parameters {
 
     @Parameter(names = {"-level"}, converter = LogLevelConverter.class, description = "Sets logging level (OFF, ALL, WARNING, SEVERE)", order = 13)
     public Level level = Level.SEVERE;  
+
+    @Parameter(names = {"-wkt"}, description = "Known polygons expressed as GeoSPARQL WKT", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 14)
+    public Boolean wkt = false;
     
-    @Parameter(names = {"-listurn"}, description = "Generate URNs for rdf:list", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 14)
-    public Boolean listurn = false;
+    @Parameter(names = {"-detlef"}, description = "Detlefication - Generate URNs for bnodes in Sequences", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 15)
+    public Boolean detlef = false;
+    
+    @Parameter(names = {"-padleftzero"}, description = "Pad PatientID with zeros if less than 8 characters long", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = true, order = 16)
+    public Boolean padleftzero = false;
 }

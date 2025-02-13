@@ -6,16 +6,14 @@ import org.apache.jena.rdf.model.ResourceFactory;
 
 /**
  *
- * @author erich
+ * @author erich bremer
  */
-public class DCM {
-    
+public class DCM {    
     //public static final String NS = "http://dicom.nema.org/resources/ontology/DCM/";  // David said no
-    public static final String NS = "https://halcyon.is/dicom/ns/";
+    public static final String NS = "https://halcyon.is/dicom/ns/"; // Replace with community version
     
     public static final Resource Null = ResourceFactory.createResource(NS+"Null");
-    public static final Resource SOPInstance = ResourceFactory.createResource(NS+"SOPInstance");
-    
+    public static final Resource SOPInstance = ResourceFactory.createResource(NS+"SOPInstance");    
     public static final Property invalidSOPInstance = ResourceFactory.createProperty(NS+"invalidSOPInstance");
     public static final Property InlineBinary = ResourceFactory.createProperty(NS,"InlineBinary");
     public static final Property Value = ResourceFactory.createProperty(NS,"Value");
@@ -24,4 +22,5 @@ public class DCM {
     public static final Property _00081190 = ResourceFactory.createProperty(NS,"00081190");
     public static final Property _30060050 = ResourceFactory.createProperty(NS,"30060050");
     public static final Property _30060042 = ResourceFactory.createProperty(NS,"30060042");
+    public static final Property patientID = ResourceFactory.createProperty(NS,"00100020");
 }

@@ -1,7 +1,6 @@
 package com.ebremer.dcm2rdf;
 
 import com.ebremer.dcm2rdf.utils.VRFormatException;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;

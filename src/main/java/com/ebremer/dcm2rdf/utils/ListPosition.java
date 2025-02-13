@@ -32,7 +32,6 @@ public class ListPosition extends FunctionBase1 {
 
     @Override
     public NodeValue exec(NodeValue elementNV) {
-        //Node listNode = listNV.asNode();
         Node targetElement = elementNV.asNode();
         Integer position = findElementPosition(targetElement);
         if (position == null) {

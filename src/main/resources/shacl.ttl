@@ -5,6 +5,10 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX sh:   <http://www.w3.org/ns/shacl#>
 PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 
+
+# This is a rough prototype of DICOM in SHACL and is ONLY here in dcm2rdf to support finding DICOM tags with VM always one.
+# A far more developed DICOM SHACL is being developed.  see dcm2shacl when it is published.  - Erich
+
 dcm:ShapeAnatomicLocationOfExaminingInstrumentDescriptionTrial
         rdf:type     sh:PropertyShape;
         sh:datatype  xsd:string;

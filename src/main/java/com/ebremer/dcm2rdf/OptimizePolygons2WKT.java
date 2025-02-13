@@ -10,6 +10,7 @@ import com.ebremer.dcm2rdf.ns.LOC;
 import com.ebremer.dcm2rdf.ns.DCM;
 import com.ebremer.dcm2rdf.utils.Sha256CalculatingInputStream;
 import com.ebremer.dcm2rdf.utils.Statistics;
+import com.ebremer.dcm2rdf.utils.Tools;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -42,7 +43,6 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
-import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.io.DicomInputStream;
@@ -57,16 +57,16 @@ import org.locationtech.jts.io.WKTWriter;
  *
  * @author erich
  */
-public class DCM2RDFConverter {
+public class OptimizePolygons2WKT {
     private final Parameters params;
     private static final Logger logger = java.util.logging.Logger.getLogger(dcm2rdf.class.getName());
     private Optional<String> hash = Optional.empty();
     
-    public DCM2RDFConverter() {
+    public OptimizePolygons2WKT() {
         this(new Parameters());
     }
     
-    public DCM2RDFConverter(Parameters params) {
+    public OptimizePolygons2WKT(Parameters params) {
         this.params = params;
     }
     
@@ -80,12 +80,8 @@ public class DCM2RDFConverter {
     
     public Model toModel(Resource root, Path file, byte[] bytes) {
         try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){
-            //dis.setIncludeBulkData(IncludeBulkData.URI);           
+         
             dis.setIncludeBulkData(IncludeBulkData.NO);
-            //dis.setBulkDataDirectory(null);
-            //dis.setBulkDataFilePrefix("blk");
-            //dis.setBulkDataFileSuffix(null);
-            //dis.setConcatenateBulkDataFiles(false);
             RDFWriter rdfwriter = new RDFWriter(file, root);
             dis.setDicomInputHandler(rdfwriter);            
             dis.readDatasetUntilPixelData();
@@ -103,12 +99,7 @@ public class DCM2RDFConverter {
                 Sha256CalculatingInputStream hashis = new Sha256CalculatingInputStream(is);
                 DicomInputStream dis = new DicomInputStream(hashis)
             ){         
-                //dis.setIncludeBulkData(IncludeBulkData.URI);   
                 dis.setIncludeBulkData(IncludeBulkData.NO);
-                //dis.setBulkDataDirectory(null);
-                //dis.setBulkDataFilePrefix("blk");
-                //dis.setBulkDataFileSuffix(null);
-                //dis.setConcatenateBulkDataFiles(false);
                 RDFWriter rdfwriter = new RDFWriter(file, root);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
@@ -121,7 +112,7 @@ public class DCM2RDFConverter {
             } catch (IOException ex) {
                 logger.log(Level.SEVERE, "Problem with File {0}", root);
             } catch (NoSuchAlgorithmException ex) {
-                Logger.getLogger(DCM2RDFConverter.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(OptimizePolygons2WKT.class.getName()).log(Level.SEVERE, null, ex);
             }
         } else {
             try (
@@ -141,21 +132,6 @@ public class DCM2RDFConverter {
         }        
         return root.getModel();
     }
-    
-    public Model Optimize(Model m) {        
-        if (params.oid) {
-            m = OptimizeRDF0(m);
-        }
-        if (!params.LongForm) {            
-            m = OptimizeRDF1(m);
-            m = OptimizeRDF2(m);
-            m = OptimizeRDF3(m);
-        }
-        if (params.listurn) {
-            m = ListURN(m);
-        }
-        return m;
-    }  
 
     public Model ProcessDICOMasBytes2Model(Path file, InputStream is) {
         Model m = ModelFactory.createDefaultModel();     
@@ -165,7 +141,6 @@ public class DCM2RDFConverter {
         if (params.hash) {
             if (hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
-                //root.addProperty(OWL.sameAs, m.createResource(String.format("urn:sha256:%s",hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, hash.get());
             } else {
                 throw new Error("HASH not calculated : "+file.toString());
@@ -177,8 +152,7 @@ public class DCM2RDFConverter {
             try {
                 URI xx = file.toUri();
                 URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));
-                //root.addProperty(OWL.sameAs, m.createResource(uri.toString()));                
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));            
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
@@ -191,7 +165,6 @@ public class DCM2RDFConverter {
                 if (hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
-                    //m.removeAll(root, OWL.sameAs, vv);
                     FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
                     throw new Error("File missing SOP Instance UID: "+file.toString());
@@ -212,27 +185,25 @@ public class DCM2RDFConverter {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
         Optional<String> sha256Hash = Optional.empty();
-        if (params.extra) {
+        if (params.extra&&(!params.LongForm)) {
             m.setNsPrefix("bib", LOC.BibFrame.NS);
             m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
             sha256Hash = Optional.of(HashGeneratorUtils.generateSHA256(bytes));
             if (sha256Hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
-                //root.addProperty(OWL.sameAs, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, sha256Hash.get());
             }
             try {
                 URI xx = file.toUri();
                 URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));
-                //root.addProperty(OWL.sameAs, m.createResource(uri.toString()));                
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));              
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
             root.addLiteral(LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(bytes.length), XSDDatatype.XSDinteger ));
         }
         m.setNsPrefix("dcm", DCM.NS);
-        DCM2RDFConverter d2r = new DCM2RDFConverter(params);
+        OptimizePolygons2WKT d2r = new OptimizePolygons2WKT(params);
         d2r.toModel(root,file,bytes);        
         root.addProperty(RDF.type, DCM.SOPInstance);
         m.setNsPrefix("dcm", DCM.NS);
@@ -242,7 +213,6 @@ public class DCM2RDFConverter {
                 if (sha256Hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",sha256Hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
-                    //m.removeAll(root, OWL.sameAs, vv);
                     FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
                     throw new Error("File missing SOP Instance UID: "+file.toString());
@@ -302,7 +272,7 @@ public class DCM2RDFConverter {
         return Optional.empty();
     }
     
-    public Model OptimizeRDF1(Model m) {
+    public Model OptimizeRemoveEmptyFieldandVRs(Model m) {
         UpdateRequest request = UpdateFactory.create();
         // Remove Empty Fields
         request.add(PSS.get(
@@ -340,45 +310,11 @@ public class DCM2RDFConverter {
         return m;
     }
     
-    public Model OptimizeRDF2(Model m) {
+    public Model OptimizeRemoveRDFListWhenAlwaysOne(Model m) {
         // remove rdf:List where VM is always 1
         Dataset ds = DatasetFactory.create();
         ds.getDefaultModel().add(m);
         ds.addNamedModel("https://ebremer.com/dummy/shacl", SHACL.getInstance().getModel());
-        
-        /*
-        String cmd = PSS.get(
-            """
-            select distinct ?s ?tag ?first
-            where {
-                ?s ?tag ?list .
-                ?list rdf:first ?first; rdf:rest rdf:nil
-                minus {?otherlist rdf:rest ?list }
-                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
-            }
-            """);
-        try (QueryExecution qexec = QueryExecutionFactory.create(cmd, ds)) {
-            ResultSet results = qexec.execSelect();
-            ResultSetFormatter.out(System.out, results);
-        }   
-        
-        String c = PSS.get(
-            """
-            construct {
-                ?s ?tag ?first
-            }
-            where {
-                ?s ?tag ?list .
-                ?list rdf:first ?first; rdf:rest rdf:nil
-                minus {?otherlist rdf:rest ?list }
-                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
-            }
-            """);
-        try (QueryExecution qexec = QueryExecutionFactory.create(c, ds)) {
-            Model wow = qexec.execConstruct();
-            wow.write(System.out, "TTL");
-        } 
-        */
         UpdateRequest request = UpdateFactory.create();
         request.add(PSS.get(
             """
@@ -395,13 +331,11 @@ public class DCM2RDFConverter {
                 minus {?otherlist rdf:rest ?list }
                 {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
             }
-            """));
-        //System.out.println("===================================================================================================");        
+            """));   
         UpdateAction.execute(request,ds);
         Model yah = ds.getDefaultModel();
         yah.setNsPrefix("dcm", DCM.NS);
-        yah.setNsPrefix("xsd", XSD.NS);
-        //RDFDataMgr.write(System.out, yah, Lang.TURTLE);       
+        yah.setNsPrefix("xsd", XSD.NS);    
         return yah;
     }
     
@@ -476,7 +410,7 @@ public class DCM2RDFConverter {
         return wow;
     }    
     
-    public Model OptimizeRDF3(Model m) {
+    public Model OptimizePolygons2WKT(Model m) {
         // convert Polygons to OGC WKT Literals        
         m.listSubjectsWithProperty(DCM._30060050)
             .forEach(r->{
@@ -494,7 +428,21 @@ public class DCM2RDFConverter {
         return m;
     }
     
-    public Model OptimizeRDF0(Model m) {
+    public Model PadLeftZero8(Model m) {
+        // Pad PatientID with zeros to make minimally 8 characters      
+        m.listSubjectsWithProperty(DCM.patientID)
+            .forEach(r->{
+                String patientID = r.getRequiredProperty(DCM.patientID).getObject().asLiteral().getString();
+                if (patientID.length()<8) {
+                    r.removeAll(DCM.patientID);
+                    String PaddedpatientID = Tools.padWithZeros(patientID);
+                    r.addProperty(DCM.patientID, PaddedpatientID);
+                }
+            });
+        return m;
+    }
+    
+    public Model OptimizeUR2URNOID(Model m) {
         // convert UR VR to OID    
         UpdateAction.parseExecute(
             PSS.get(  
@@ -515,46 +463,9 @@ public class DCM2RDFConverter {
             ), m);
         return m;
     }
-    
-    public Model ListURN(Model m) {
-        // Detlefication - generate list URIs 
-        try {
-            ParameterizedSparqlString pss =PSS.getPSS(  
-                """            
-                delete {
-                    ?s ?tag ?list .
-                    ?list
-                        rdf:first ?first;
-                        rdf:rest ?rest
-                }
-                insert {
-                    ?s ?tag ?newlist .
-                    ?newlist
-                        rdf:first ?first;
-                        rdf:rest ?rest
-                }
-                where {
-                    ?s ?tag ?list .
-                    ?list
-                        rdf:first ?first;
-                        rdf:rest ?rest
-                    bind(iri(concat(str(?s), "/", STRAFTER(STR(?tag), ?ns))) as ?newlist)
-                    filter(?tag!=rdf:first)
-                    filter(?tag!=rdf:rest)
-                    filter(?tag!=dcm:Value)
-                }
-                """
-            );
-            pss.setLiteral("ns", DCM.NS);
-            UpdateAction.parseExecute(pss.toString(), m);
-        } catch (Exception ha) {
-            System.out.println(ha.getMessage());
-        }
-        return m;
-    }
-    
-    public Model ListURN2(Model m) {
-        // Detlefication - generate list URIs 
+        
+    public Model GenSeqNames(Model m) {
+        // Detlefication - generate Sequence URNs 
         try {
             ParameterizedSparqlString pss = PSS.getPSS(  
                 """            
@@ -573,7 +484,7 @@ public class DCM2RDFConverter {
                     ?ss ?pp ?node .
                     filter(isblank(?node))
                     filter(!isblank(?root))
-                    bind(iri(concat(str(?root), "/", STRAFTER(STR(?tag), ?ns), "/", str(?index))) as ?newnode)
+                    bind(iri(concat(str(?root), "#", STRAFTER(STR(?tag), ?ns), "/", str(?index))) as ?newnode)
                     filter(strstarts(str(?tag), ?dcmNS))
                 }
                 """

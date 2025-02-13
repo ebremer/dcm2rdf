@@ -1,7 +1,5 @@
 package com.ebremer.dcm2rdf.utils;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,10 +55,6 @@ public class SHACL {
     }
 
     public static SHACL getInstance() {
-        //if (shacl==null) {
-          //  shacl = new SHACL();
-        //}
-        //return shacl;
         return new SHACL();
     }
     
@@ -69,9 +63,5 @@ public class SHACL {
             System.out.println("Only One : "+s);
         });
         return onlyone;
-    }
-    
-    public static void main(String[] args) {
-        SHACL shacl = SHACL.getInstance();
     }
 }

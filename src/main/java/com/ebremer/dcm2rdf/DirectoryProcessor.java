@@ -69,7 +69,6 @@ public class DirectoryProcessor {
     }
 
     public void Traverse(Parameters params, Set<FileType> allowedfiletypes, FileType ftype) {
-        //LinkedList<Future<Stat>> futures = new LinkedList<>();    
         try (ThreadPoolExecutor engine = new ThreadPoolExecutor(params.threads, params.threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
             engine.prestartAllCoreThreads();
             Files.walk(params.src.toPath())                        
@@ -123,8 +122,6 @@ public class DirectoryProcessor {
                         progressBar.stepTo(engine.getCompletedTaskCount());
                     }
                     engine.submit(new FileProcessor(params,fc,ft,p));
-            //        Future<Stat> worker;
-              //          futures.add(worker);
                 });
             engine.shutdown();
             while (!engine.isTerminated()) {
@@ -167,18 +164,21 @@ class FileProcessor implements Callable<Model> {
     }
 
     public Model ScanMeta(Parameters params, Path file, InputStream is) {
-        DCM2RDFConverter d2r = new DCM2RDFConverter(params);     
+        OptimizePolygons2WKT d2r = new OptimizePolygons2WKT(params);     
         Model m = d2r.ProcessDICOMasBytes2Model(this.file, is);                 
-        if (params.oid) {
-            m = d2r.OptimizeRDF0(m);
-        }
-        if (!params.LongForm) {            
-            m = d2r.OptimizeRDF1(m);
-            m = d2r.OptimizeRDF2(m);
-            m = d2r.OptimizeRDF3(m);
-        }
-        if (params.listurn) {
-            m = d2r.ListURN2(m);
+        if (!params.LongForm) {
+            if (params.oid) {
+               m = d2r.OptimizeUR2URNOID(m);
+            }
+            m = d2r.OptimizeRemoveEmptyFieldandVRs(m);
+            m = d2r.OptimizeRemoveRDFListWhenAlwaysOne(m);
+            if (params.wkt) {
+                m = d2r.OptimizePolygons2WKT(m);
+            }
+            if (params.detlef) {
+                m = d2r.GenSeqNames(m);
+            }
+            d2r.PadLeftZero8(m);            
         }
         return m;
     }
