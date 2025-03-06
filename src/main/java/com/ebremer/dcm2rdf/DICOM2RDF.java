@@ -57,16 +57,16 @@ import org.locationtech.jts.io.WKTWriter;
  *
  * @author erich
  */
-public class OptimizePolygons2WKT {
+public class DICOM2RDF {
     private final Parameters params;
     private static final Logger logger = java.util.logging.Logger.getLogger(dcm2rdf.class.getName());
     private Optional<String> hash = Optional.empty();
     
-    public OptimizePolygons2WKT() {
+    public DICOM2RDF() {
         this(new Parameters());
     }
     
-    public OptimizePolygons2WKT(Parameters params) {
+    public DICOM2RDF(Parameters params) {
         this.params = params;
     }
     
@@ -79,8 +79,7 @@ public class OptimizePolygons2WKT {
     }
     
     public Model toModel(Resource root, Path file, byte[] bytes) {
-        try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){
-         
+        try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){         
             dis.setIncludeBulkData(IncludeBulkData.NO);
             RDFWriter rdfwriter = new RDFWriter(file, root);
             dis.setDicomInputHandler(rdfwriter);            
@@ -112,7 +111,7 @@ public class OptimizePolygons2WKT {
             } catch (IOException ex) {
                 logger.log(Level.SEVERE, "Problem with File {0}", root);
             } catch (NoSuchAlgorithmException ex) {
-                Logger.getLogger(OptimizePolygons2WKT.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(DICOM2RDF.class.getName()).log(Level.SEVERE, null, ex);
             }
         } else {
             try (
@@ -203,7 +202,7 @@ public class OptimizePolygons2WKT {
             root.addLiteral(LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(bytes.length), XSDDatatype.XSDinteger ));
         }
         m.setNsPrefix("dcm", DCM.NS);
-        OptimizePolygons2WKT d2r = new OptimizePolygons2WKT(params);
+        DICOM2RDF d2r = new DICOM2RDF(params);
         d2r.toModel(root,file,bytes);        
         root.addProperty(RDF.type, DCM.SOPInstance);
         m.setNsPrefix("dcm", DCM.NS);
