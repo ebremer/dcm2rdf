@@ -22,9 +22,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
-        <dcm4che.ver>5.33.1</dcm4che.ver>
+        <dcm4che.ver>5.29.1</dcm4che.ver>
     </properties>
     <dependencies>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.9</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.jena</groupId>
             <artifactId>apache-jena-libs</artifactId>
@@ -54,17 +59,12 @@
                 <exclusion>
                     <artifactId>org.slf4j</artifactId>
                     <groupId>slf4j-api</groupId>
-                </exclusion>
+                </exclusion>          
             </exclusions>
         </dependency>
         <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-json</artifactId>
-            <version>${dcm4che.ver}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-imageio</artifactId>
             <version>${dcm4che.ver}</version>
         </dependency>
         <dependency>
@@ -83,33 +83,6 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <dependency>
-            <groupId>org.dcm4che.tool</groupId>
-            <artifactId>dcm4che-tool-dcm2jpg</artifactId>
-            <version>${dcm4che.ver}</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>ch.qos.logback</artifactId>
-                    <groupId>logback-classic</groupId>
-                </exclusion>
-            </exclusions>
-        </dependency> 
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-imageio-opencv</artifactId>
-            <version>${dcm4che.ver}</version>
-        </dependency> 
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-image</artifactId>
-            <version>${dcm4che.ver}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency> 
         <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-deident</artifactId>
@@ -136,7 +109,7 @@
             <groupId>me.tongfei</groupId>
             <artifactId>progressbar</artifactId>
             <version>0.10.1</version>
-        </dependency>             
+        </dependency>      
     </dependencies>
     <profiles>
         <profile>

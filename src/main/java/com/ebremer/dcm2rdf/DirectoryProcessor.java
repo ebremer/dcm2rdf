@@ -164,7 +164,7 @@ class FileProcessor implements Callable<Model> {
     }
 
     public Model ScanMeta(Parameters params, Path file, InputStream is) {
-        OptimizePolygons2WKT d2r = new OptimizePolygons2WKT(params);     
+        DICOM2RDF d2r = new DICOM2RDF(params);     
         Model m = d2r.ProcessDICOMasBytes2Model(this.file, is);                 
         if (!params.LongForm) {
             if (params.oid) {
