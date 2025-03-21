@@ -39,7 +39,7 @@ public class Parameters {
     @Parameter(names = {"-extra"}, description = "Add source file URI, file size", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 9)
     public Boolean extra = false;
     
-    @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = true, validateWith = Dcm2RdfValidator.class, order = 10)
+    @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = false, validateWith = Dcm2RdfValidator.class, order = 10)
     public String naming = "SOPInstanceUID";
    
     @Parameter(names = {"-oid"}, description = "Convert UI VRs to urn:oid:<oid>", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 11)
