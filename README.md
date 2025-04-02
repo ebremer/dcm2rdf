@@ -45,6 +45,63 @@ or as a native image not requiring a JDK/JRE to be installed.  It is built upon 
 5) DICOM SHACL development
 6) and much much more...
 
+## Usage
+```
+Usage: dcm2rdf [options]
+  Options:
+  * -src
+      Source Folder or File
+  * -dest
+      Destination Folder or File
+    -t
+      # of threads for processing.  Generally, one thread per file.
+      Default: 1
+    -c
+      results file will be gzipped compressed
+      Default: false
+    -L
+      Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!
+      Default: false
+    -version
+      Display software version
+      Default: false
+    -status
+      Display progress in real-time.
+      Default: false
+    -overwrite
+      Overwrite results files.
+      Default: false
+    -help, -h
+      Display help information
+      Default: false
+    -extra
+      Add source file URI, file size
+      Default: false
+    -naming
+      Subject method (SOPInstanceUID, SHA256)
+      Default: SOPInstanceUID
+    -oid
+      Convert UI VRs to urn:oid:<oid>
+      Default: false
+    -hash
+      Calculate SHA256 Hashes. Implied with SHA256 naming option.
+      Default: false
+    -level
+      Sets logging level (OFF, ALL, WARNING, SEVERE)
+      Default: SEVERE
+    -wkt
+      Known polygons expressed as GeoSPARQL WKT
+      Default: false
+    -detlef
+      Detlefication - Generate URNs for bnodes in Sequences
+      Default: false
+    -cdt
+      Convert lists to complex data types (CDT)
+      Default: false
+    -cdtlevel
+      if cdt is true, only do mapping if list length is greater than this value 
+      Default: 3
+```
 ## References
 - 2009 [Context-Driven Ontological Annotations In DICOM Images - Towards a semantic PACS](https://www.scitepress.org/PublishedPapers/2009/15502/15502.pdf)
 - 2013 [DICOM metadata as RDF](https://dl.gi.de/items/6ae82b4a-c2c8-4d7e-b45b-088e82080f99) - <[Preprint](https://www.netestate.de/dicom/DICOM_metadata_as_RDF.pdf)> <[Source Code](https://github.com/Bonubase/dicom2rdf)>

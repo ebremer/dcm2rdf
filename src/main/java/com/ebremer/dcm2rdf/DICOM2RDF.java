@@ -11,6 +11,9 @@ import com.ebremer.dcm2rdf.ns.DCM;
 import com.ebremer.dcm2rdf.utils.Sha256CalculatingInputStream;
 import com.ebremer.dcm2rdf.utils.Statistics;
 import com.ebremer.dcm2rdf.utils.Tools;
+import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonArrayBuilder;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -68,6 +71,7 @@ public class DICOM2RDF {
     
     public DICOM2RDF(Parameters params) {
         this.params = params;
+        D2R.init();
     }
     
     public Optional<String> getHash() {
@@ -76,6 +80,20 @@ public class DICOM2RDF {
     
     public Parameters getParameters() {
         return this.params;
+    }
+
+    public Model toModel(Resource root, InputStream is) {
+        try ( DicomInputStream dis = new DicomInputStream( is )) {         
+            dis.setIncludeBulkData(IncludeBulkData.NO);
+            RDFWriter rdfwriter = new RDFWriter(root);
+            dis.setDicomInputHandler(rdfwriter);            
+            dis.readDatasetUntilPixelData();
+        } catch (EOFException ex) {
+            logger.log(Level.SEVERE, "End of File");
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Problem with File");
+        }
+        return root.getModel();
     }
     
     public Model toModel(Resource root, Path file, byte[] bytes) {
@@ -253,6 +271,63 @@ public class DICOM2RDF {
         UpdateAction.execute(request,m);
     }
     
+    public Model RDF2CDRLists(Model m) {      
+        ParameterizedSparqlString pss = new ParameterizedSparqlString(
+            """
+            select distinct ?list
+            where {
+                ?uri ?p ?list .
+                filter (isblank(?list))
+                filter(strstarts(str(?p),?prefix))
+                ?list rdf:first ?item .
+                filter(!isblank(?item))
+                ?list list:length ?length                
+                filter (?length>=?len)
+            }
+            """);
+        pss.setLiteral("prefix", DCM.NS);
+        pss.setNsPrefix("rdf", RDF.uri);
+        pss.setNsPrefix("list", "http://jena.apache.org/ARQ/list#");
+        pss.setLiteral("len", params.cdtlevel);        
+        ResultSet rs = QueryExecutionFactory.create(pss.toString(), m).execSelect().materialise();
+        rs.forEachRemaining(qs->{
+            UpdateRequest request = UpdateFactory.create();
+            ParameterizedSparqlString pssx = new ParameterizedSparqlString(
+                """
+                delete {
+                    ?s ?xp ?listx .
+                    ?listNode ?p ?o
+                }
+                insert {
+                    ?s ?xp ?cdtList
+                }
+                where {                
+                    ?s ?xp ?list .
+                    ?s ?xp ?listx .
+                    bind (dcm:rdf2cdtList(?list) as ?cdtList)
+                    ?list rdf:rest* ?listNode .
+                    FILTER (?listNode != rdf:nil)
+                    ?listNode ?p ?o
+                };
+                """
+            );
+            pssx.setIri("list", qs.get("list").asResource().toString());
+            pssx.setNsPrefix("dcm", DCM.NS);
+            pssx.setNsPrefix("rdf", RDF.getURI());
+            try {
+                request.add(pssx.toString());
+            } catch (Exception ex) {
+                System.out.println(ex.toString());
+            }
+            try {
+                UpdateAction.execute(request,m);
+            } catch (Exception ex) {
+                System.out.println(ex.toString());
+            }            
+        });
+        return m;
+    }
+    
     public Optional<String> getSOPInstanceUID(Model m) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString(
         """
@@ -355,6 +430,22 @@ public class DICOM2RDF {
             }
         }
     }
+        
+    public static JsonArray flattenList2JsonArray(RDFList rdfList) {
+        JsonArrayBuilder jab = Json.createArrayBuilder();
+        RDFList current = rdfList;
+        while (!current.isEmpty()) {
+            RDFNode node = current.getHead();
+            if (node.isLiteral()) {
+                String type = node.asLiteral().getDatatypeURI();
+                switch (type) {
+                    default -> throw new Error("Unknown datatype : "+type);
+                }
+            }
+            current = current.getTail();
+        }
+        return jab.build();
+    }
 
     public static Literal convertRDFListXYZToWKT(RDFList rdfList) {
         List<Coordinate> coordinates = new ArrayList<>();
@@ -363,9 +454,9 @@ public class DICOM2RDF {
             RDFNode firstNode = current.getHead();
             RDFNode secondNode = current.getTail().getHead();
             RDFNode thirdNode = current.getTail().getHead();
-            double x = firstNode.asLiteral().getDouble();
-            double y = secondNode.asLiteral().getDouble();
-            double z = thirdNode.asLiteral().getDouble();
+            double x = firstNode.asLiteral().getDouble() / 1000.0d;
+            double y = secondNode.asLiteral().getDouble() / 1000.0d;
+            double z = thirdNode.asLiteral().getDouble() / 1000.0d;
             coordinates.add(new Coordinate(x, y, z));
             current = current.getTail().getTail().getTail();
         }
@@ -384,6 +475,7 @@ public class DICOM2RDF {
             Point point = geometryFactory.createPoint(coords[0]);
             wkt = point.toText();
         }
+        wkt = String.format("<http://www.opengis.net/def/crs/EPSG/0/7706> %s", wkt);
         return rdfList.getModel().createTypedLiteral(wkt, GEO.NS+"wktLiteral");
     }
 
@@ -393,8 +485,8 @@ public class DICOM2RDF {
         while (!current.isEmpty()) {
             RDFNode firstNode = current.getHead();
             RDFNode secondNode = current.getTail().getHead();
-            double x = firstNode.asLiteral().getDouble();
-            double y = secondNode.asLiteral().getDouble();
+            double x = firstNode.asLiteral().getDouble() / 1000.0d;
+            double y = secondNode.asLiteral().getDouble() / 1000.0d;
             coordinates.add(new Coordinate(x, y));
             current = current.getTail().getTail();
         }
@@ -405,8 +497,9 @@ public class DICOM2RDF {
         LinearRing ring = geometryFactory.createLinearRing(coordinates.toArray(new Coordinate[0]));
         org.locationtech.jts.geom.Polygon polygon = geometryFactory.createPolygon(ring);
         WKTWriter wktWriter = new WKTWriter();
-        String wow = wktWriter.write(polygon);
-        return wow;
+        String wkt = wktWriter.write(polygon);
+        wkt = String.format("<http://www.opengis.net/def/crs/EPSG/0/404000> %s", wkt);
+        return wkt;
     }    
     
     public Model OptimizePolygons2WKT(Model m) {
@@ -491,7 +584,7 @@ public class DICOM2RDF {
             pss.setLiteral("ns", DCM.NS);
             pss.setLiteral("dcmNS", DCM.NS);
             pss.setNsPrefix("list", "http://jena.apache.org/ARQ/list#");
-            pss.setNsPrefix("d2r", dcm2rdf.NS);
+            pss.setNsPrefix("d2r", DCM.NS);
             UpdateAction.parseExecute(pss.toString(), m);
         } catch (Exception ha) {
             System.out.println(ha.getMessage());

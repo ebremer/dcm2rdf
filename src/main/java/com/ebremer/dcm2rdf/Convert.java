@@ -4,6 +4,8 @@ import com.ebremer.dcm2rdf.utils.VRFormatException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
@@ -15,6 +17,8 @@ import org.apache.jena.rdf.model.ResourceFactory;
  * @author erich
  */
 public class Convert {
+    
+    private static final Logger logger = Logger.getLogger(Convert.class.getName());
     
     private static final Pattern DATEPATTERN = Pattern.compile("^(\\d{4})(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])$");
     private static final Pattern DECIMALPATTERN = Pattern.compile("^[+-]?\\d{0,15}(\\.\\d{1,15})?([eE][+-]?\\d{1,15})?$");
@@ -56,16 +60,24 @@ public class Convert {
         return ResourceFactory.createTypedLiteral(xsdTime, XSDDatatype.XSDtime);
     }
     
-    public static Literal toDA(String datetime) throws IllegalArgumentException {
+    public static Literal toDA(String datetime) throws IllegalArgumentException {        
         String dicomRegex = "^(\\d{4})(\\d{2})?(\\d{2})?(\\d{2})?(\\d{2})?(\\d{2})?(\\.(\\d{1,6}))?([+-]\\d{4})?$";
         Pattern pattern = Pattern.compile(dicomRegex);
         Matcher matcher = pattern.matcher(datetime.trim());
         if (!matcher.matches()) {
+            logger.log(Level.WARNING, String.format("Invalid DICOM DA format [%s]", datetime));
+            if (datetime.equals("0000-00-00T00:00:00")) {
+                logger.log(Level.WARNING, "Not a valid xsd:datetime string --> 0000-00-00T00:00:00");
+                return ResourceFactory.createTypedLiteral("0001-01-01T00:00:00", XSDDatatype.XSDdateTime);
+            }
             throw new VRFormatException(String.format("Invalid DICOM DA format [%s]", datetime));
         }
         String year = matcher.group(1);
+        year = year.equals("0000")?"0001":year;
         String month = matcher.group(2) != null ? matcher.group(2) : "01";
+        month = month.equals("00")?"01":month;
         String day = matcher.group(3) != null ? matcher.group(3) : "01";
+        day = day.equals("00")?"01":day;
         String hour = matcher.group(4) != null ? matcher.group(4) : "00";
         String minute = matcher.group(5) != null ? matcher.group(5) : "00";
         String second = matcher.group(6) != null ? matcher.group(6) : "00";
@@ -75,11 +87,11 @@ public class Convert {
             fractionalSecond += "0";
         }
         String formattedOffset = offset.substring(0, 3) + ":" + offset.substring(3);
-        String xsdDateTime = String.format("%s-%s-%sT%s:%s:%s.%s%s", year, month, day, hour, minute, second, fractionalSecond, formattedOffset);
+        String xsdDateTime = String.format("%s-%s-%sT%s:%s:%s.%s%s", year, month, day, hour, minute, second, fractionalSecond, formattedOffset).substring(0, 19);
         try {
-            LocalDateTime.parse(xsdDateTime.substring(0, 19), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            LocalDateTime.parse(xsdDateTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("Invalid DICOM DateTime conversion to XSD DateTime", e);
+            throw new IllegalArgumentException(String.format("Invalid DICOM DateTime conversion to XSD DateTime for %s", datetime), e);
         }
         return ResourceFactory.createTypedLiteral(xsdDateTime, XSDDatatype.XSDdateTime);
     }
@@ -89,7 +101,7 @@ public class Convert {
         if (DATEPATTERN.matcher(pdate).matches()) {
             return ResourceFactory.createTypedLiteral(String.format("%s-%s-%s",pdate.subSequence(0, 4), pdate.substring(4, 6), pdate.substring(6)), XSDDatatype.XSDdate);
         }
-        throw new VRFormatException("Invalid date string [YYYYMMDD] "+date);
+        throw new VRFormatException("Invalid date string [YYYYMMDD] " + date);
     }
 
     public static Literal toDS(String input) {
@@ -140,5 +152,9 @@ public class Convert {
             throw new IllegalArgumentException("Input is not a valid integer.");
         }
         return ResourceFactory.createTypedLiteral(trimmedInput, XSDDatatype.XSDinteger);
+    }
+    
+    public static void main(String[] args) {
+        System.out.println(toDA("0000-00-00T00:00:00"));
     }
 }

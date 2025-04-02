@@ -178,7 +178,10 @@ class FileProcessor implements Callable<Model> {
             if (params.detlef) {
                 m = d2r.GenSeqNames(m);
             }
-            d2r.PadLeftZero8(m);            
+            if (params.cdt) {
+                m = d2r.RDF2CDRLists(m);
+            }
+            //d2r.PadLeftZero8(m);            
         }
         return m;
     }
@@ -219,6 +222,9 @@ class FileProcessor implements Callable<Model> {
         Path dest = Paths.get(root+(params.compress?".ttl.gz":".ttl"));
         if ( !dest.toFile().exists() || params.overwrite ) {
             Model m = ScanMeta(params, Path.of(root), is);
+            if (params.cdt) {
+                m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
+            }
             if (dest.toFile().exists()) {
                 dest.toFile().delete();
             }

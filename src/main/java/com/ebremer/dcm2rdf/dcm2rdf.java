@@ -1,10 +1,7 @@
 package com.ebremer.dcm2rdf;
 
-import com.ebremer.dcm2rdf.utils.ListPosition;
-import com.ebremer.dcm2rdf.libs.isEvenDicomTag;
 import com.ebremer.dcm2rdf.utils.RDFFormatter;
 import com.ebremer.dcm2rdf.parameters.Parameters;
-import com.ebremer.dcm2rdf.ns.DCM;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.ParameterException;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOM;
@@ -20,7 +17,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.jena.sparql.function.FunctionRegistry;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -31,7 +27,6 @@ import org.slf4j.LoggerFactory;
 public class dcm2rdf {    
     public static String Version = "1.0.0";
     private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
-    public static final String NS = "https://halcyon.is/ns/dcm2rdf/ns/";
 
     public static void main(String[] args) {
         ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger)LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -67,8 +62,7 @@ public class dcm2rdf {
                     fileHandler.setLevel(params.level);
                     fileHandler.setFormatter(new RDFFormatter());
                     logger.addHandler(fileHandler);
-                    FunctionRegistry.get().put(DCM.NS+"isEvenDicomTag", isEvenDicomTag.class);                                
-                    FunctionRegistry.get().put(NS+"ListPosition", ListPosition.class);
+                    D2R.init();
                     consoleHandler.setLevel(params.level);
                     new DirectoryProcessor(params).Protocol(DICOM);
                     System.out.println(Statistics.getStatistics().getStats());
