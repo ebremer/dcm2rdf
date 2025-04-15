@@ -111,11 +111,10 @@ public class DICOM2RDF {
     }
     
     public Model toModel(Resource root, Path file, InputStream is) {
-        if ( params.hash || params.naming.equals("SHA256") ) {
-            try (
+        if ( params.hash || params.naming.equals("SHA256") ) {  
+            try {
                 Sha256CalculatingInputStream hashis = new Sha256CalculatingInputStream(is);
-                DicomInputStream dis = new DicomInputStream(hashis)
-            ){         
+                DicomInputStream dis = new DicomInputStream(hashis);
                 dis.setIncludeBulkData(IncludeBulkData.NO);
                 RDFWriter rdfwriter = new RDFWriter(file, root);
                 dis.setDicomInputHandler(rdfwriter);
@@ -124,56 +123,60 @@ public class DICOM2RDF {
                 this.hash = Optional.of(hashis.getSha256Hash());
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
                 Statistics.getStatistics().AddActuallyRead(file.toFile().length());
-            } catch (EOFException ex) {
-                logger.log(Level.SEVERE, "End of File", root);
             } catch (IOException ex) {
                 logger.log(Level.SEVERE, "Problem with File {0}", root);
             } catch (NoSuchAlgorithmException ex) {
-                Logger.getLogger(DICOM2RDF.class.getName()).log(Level.SEVERE, null, ex);
+                logger.log(Level.SEVERE, "NoSuchAlgorithmException with File {0}", root);
             }
         } else {
-            try (
-                DicomInputStream dis = new DicomInputStream(is)
-            ){         
+            try {
+                DicomInputStream dis = new DicomInputStream(is);  
                 dis.setIncludeBulkData(IncludeBulkData.NO);
                 RDFWriter rdfwriter = new RDFWriter(file, root);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
                 Statistics.getStatistics().AddActuallyRead(dis.getPosition());
-            } catch (EOFException ex) {
-                logger.log(Level.SEVERE, "End of File", root);
             } catch (IOException ex) {
-                logger.log(Level.SEVERE, "Problem with File {0}", root);
+                Logger.getLogger(DICOM2RDF.class.getName()).log(Level.SEVERE, null, ex);
             }
         }        
         return root.getModel();
     }
 
-    public Model ProcessDICOMasBytes2Model(Path file, InputStream is) {
+    public Model ProcessDICOMasBytes2Model(String file, InputStream is) {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
         root.addProperty(RDF.type, DCM.SOPInstance);
-        toModel(root, file, is);
+        toModel(root, Path.of(file), is);
         if (params.hash) {
             if (hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, hash.get());
             } else {
-                throw new Error("HASH not calculated : "+file.toString());
+                throw new Error("HASH not calculated : "+file);
             }
         }
         if (params.extra) {
             m.setNsPrefix("bib", LOC.BibFrame.NS);
             m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
-            try {
-                URI xx = file.toUri();
-                URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));            
-            } catch (URISyntaxException ex) {
-                logger.log(Level.SEVERE, ex.getMessage(), file);
+            String[] parts = file.split("#");  //
+            URI uri;
+            String ffile = file.replace(" ", "%20");
+            switch (parts.length) {
+                case 1 -> uri = Path.of(ffile).toUri();
+                case 2 -> {
+                    URI xuri = Path.of(parts[0]).toUri();
+                    try {
+                        uri = new URI(xuri.getScheme(), "", xuri.getPath(), parts[1]);
+                    } catch (URISyntaxException ex) {
+                        throw new Error("Problem with file : "+file);
+                    }
+                }
+                default -> throw new Error("Problem with file : "+file);
             }
-            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(file.toFile().length()), XSDDatatype.XSDinteger ) );
+            root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));
+            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(Path.of(file).toFile().length()), XSDDatatype.XSDinteger ) );
         }
         m.setNsPrefix("dcm", DCM.NS);                        
         Optional<String> uid = getSOPInstanceUID(m);
@@ -184,14 +187,14 @@ public class DICOM2RDF {
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
                     FlipURI(root.toString(), vv.toString(), m);                    
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                    throw new Error("File missing SOP Instance UID: "+file);
                 }
             }
             default -> {
                 if (uid.isPresent()) {
                     FlipURI(root.toString(), "urn:oid:"+uid.get(), m);
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                    throw new Error("File missing SOP Instance UID: "+file);
                 }
             }     
         }

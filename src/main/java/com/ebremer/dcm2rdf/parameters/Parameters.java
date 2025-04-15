@@ -64,5 +64,5 @@ public class Parameters {
     public Boolean cdt = false;
 
     @Parameter(names = {"-cdtlevel"}, description = "if cdt is true, only do mapping if list length is greater than this value", validateWith = Dcm2RdfValidator.class, hidden = false, order = 18)
-    public int cdtlevel = 3;    
+    public int cdtlevel = 4;    
 }

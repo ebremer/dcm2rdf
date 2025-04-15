@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public class dcm2rdf {    
-    public static String Version = "1.0.0";
+    public static String Version = "1.1.0";
     private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
 
     public static void main(String[] args) {

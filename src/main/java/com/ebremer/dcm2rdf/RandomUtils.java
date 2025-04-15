@@ -67,6 +67,16 @@ public class RandomUtils {
             return UNKNOWN;
         }
     }
+    
+    public static String StripExtension(String name) {
+        if (name.endsWith(".dcm")) {
+            return name.replace(".dcm", "");
+        }
+        if (name.endsWith(".dat")) {
+            return name.replace(".dat", "");
+        }
+        return name;
+    }
 
     public static void DumpModel(Model m, Path file, boolean compress) {
         m.setNsPrefix("xsd", XSD.NS);
