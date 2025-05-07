@@ -96,6 +96,13 @@ public class RDFWriter implements DicomInputHandler {
         this.stack.push(root);                
     }
     
+    public RDFWriter(Resource root) {
+        this.file = null;
+        this.root = root;
+        this.m = root.getModel();
+        this.stack.push(root);                
+    }
+    
     public String getReplaceBulkDataURI() {
         return replaceBulkDataURI;
     }

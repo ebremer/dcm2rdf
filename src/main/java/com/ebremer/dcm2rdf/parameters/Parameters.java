@@ -24,7 +24,7 @@ public class Parameters {
     @Parameter(names = {"-L"}, converter = BooleanConverter.class, description = "Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!", validateWith = Dcm2RdfValidator.class, order = 4)
     public Boolean LongForm = false;    
     
-    @Parameter(names = {"-version","-v"}, converter = BooleanConverter.class, description = "Display software version", validateWith = Dcm2RdfValidator.class, order = 5)
+    @Parameter(names = {"-version"}, converter = BooleanConverter.class, description = "Display software version", validateWith = Dcm2RdfValidator.class, order = 5)
     public Boolean version = false;
     
     @Parameter(names = {"-status"}, converter = BooleanConverter.class, description = "Display progress in real-time.", validateWith = Dcm2RdfValidator.class, order = 6)
@@ -59,4 +59,10 @@ public class Parameters {
     
     @Parameter(names = {"-padleftzero"}, description = "Pad PatientID with zeros if less than 8 characters long", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = true, order = 16)
     public Boolean padleftzero = false;
+    
+    @Parameter(names = {"-cdt"}, description = "Convert lists to complex data types (CDT)", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 17)
+    public Boolean cdt = false;
+
+    @Parameter(names = {"-cdtlevel"}, description = "if cdt is true, only do mapping if list length is greater than this value", validateWith = Dcm2RdfValidator.class, hidden = false, order = 18)
+    public int cdtlevel = 4;    
 }

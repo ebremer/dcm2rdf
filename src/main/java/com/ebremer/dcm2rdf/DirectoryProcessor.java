@@ -163,9 +163,9 @@ class FileProcessor implements Callable<Model> {
         this.file = file;
     }
 
-    public Model ScanMeta(Parameters params, Path file, InputStream is) {
+    public Model ScanMeta(Parameters params, String xfile, InputStream is) {
         DICOM2RDF d2r = new DICOM2RDF(params);     
-        Model m = d2r.ProcessDICOMasBytes2Model(this.file, is);                 
+        Model m = d2r.ProcessDICOMasBytes2Model(xfile, is);                 
         if (!params.LongForm) {
             if (params.oid) {
                m = d2r.OptimizeUR2URNOID(m);
@@ -178,7 +178,10 @@ class FileProcessor implements Callable<Model> {
             if (params.detlef) {
                 m = d2r.GenSeqNames(m);
             }
-            d2r.PadLeftZero8(m);            
+            if (params.cdt) {
+                m = d2r.RDF2CDRLists(m);
+            }
+            //d2r.PadLeftZero8(m);            
         }
         return m;
     }
@@ -197,11 +200,11 @@ class FileProcessor implements Callable<Model> {
                     switch(tft) {
                         case DICOM -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), tarInput);
+                            ProcessDICOM(params, root.toString()+"#"+ ce.getName(), tarInput);
                         }
                         case DICOMDIR -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, Path.of(root.toString(), ce.getName()).toString(), tarInput);
+                            ProcessDICOM(params, root.toString()+"#"+ce.getName(), tarInput);
                         }
                         case TAR -> {
                             if (params.status) fc.incrementTarFileCount();
@@ -215,10 +218,13 @@ class FileProcessor implements Callable<Model> {
         }
     }
     
-    private void ProcessDICOM(Parameters params, String root, InputStream is) {
-        Path dest = Paths.get(root+(params.compress?".ttl.gz":".ttl"));
+    private void ProcessDICOM(Parameters params, String root, InputStream is) {        
+        Path dest = Paths.get(RandomUtils.StripExtension(root)+(params.compress?".ttl.gz":".ttl"));
         if ( !dest.toFile().exists() || params.overwrite ) {
-            Model m = ScanMeta(params, Path.of(root), is);
+            Model m = ScanMeta(params, root, is);
+            if (params.cdt) {
+                m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
+            }
             if (dest.toFile().exists()) {
                 dest.toFile().delete();
             }
@@ -237,15 +243,14 @@ class FileProcessor implements Callable<Model> {
         switch (ft) {
             case DICOM -> {
                 try (FileInputStream fis = new FileInputStream(file.toFile())) {
-                    frag = frag.substring(0, frag.length()-4);
-                    Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
+                    Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?".ttl.gz":".ttl"));
                     if (!xdest.toFile().exists() || params.overwrite) {
                         ProcessDICOM(params, frag, fis);
                     }
                 } catch (FileNotFoundException ex) {
-                    logger.severe(ex.getMessage());
+                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 } catch (IOException ex) {
-                    logger.severe(ex.getMessage());
+                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 }
             }
             case DICOMDIR -> {
@@ -255,16 +260,16 @@ class FileProcessor implements Callable<Model> {
                         ProcessDICOM(params, frag, fis);
                     }
                 } catch (FileNotFoundException ex) {
-                    logger.severe(ex.getMessage());
+                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 } catch (IOException ex) {
-                    logger.severe(ex.getMessage());
+                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 }
             }
             case TAR -> {         
                 try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(file.toFile()))) {
                     ProcessTar(tarInput, Path.of(frag));
                 } catch (IOException ex) {
-                    logger.severe(ex.getMessage());
+                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 }
             }
             default -> {
