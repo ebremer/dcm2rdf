@@ -594,4 +594,86 @@ public class DICOM2RDF {
         }
         return m;
     }
+    
+    public Model PtagTweak(Model m) {
+        UpdateRequest request = UpdateFactory.create();
+        /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
+        
+            urn:oid:1.2.3.4.5 dcm:hasPrivateElement  [
+                dcm:hasPrivateCreatorId "Private Creator ID";
+                dcm:hasElement [
+                    dcm:id "XX" ;
+                    dcm:value "some arbitrary value" .
+                ]
+            ]  .
+        */
+        ParameterizedSparqlString pss = PSS.getPSS(
+            """
+            insert {
+                ?s  dcm:AAA ?id;
+                    dcm:BBB ?creator;
+                    dcm:CCC ?ptags;
+                    dcm:DDD ?PrivateCreatorId;
+                    dcm:EEE ?PrivateCreatorURI
+            }
+            where {
+                ?s ?prop ?node; a dcm:SOPInstance .
+                {   select distinct ?id ?creator ?ptags ?PrivateCreatorId ?PrivateCreatorURI where {
+                        ?s ?prop ?node; a dcm:SOPInstance .
+                        filter(dcm:isOddDicomTag(?prop))
+                        bind(replace(str(?prop),?dcm,"") as ?tag)
+                        bind(substr(?tag,1,4) as ?group)
+                        bind(substr(?tag,7,2) as ?id)
+                        bind(concat(?dcm,?group,"00") as ?creator)
+                        bind(concat(?dcm,?group,?id,"00") as ?ptags)
+                        bind(?node as ?PrivateCreatorId)
+                        bind(?prop as ?PrivateCreatorURI)
+                        filter(strstarts(str(?prop),?creator))
+                    }
+                }
+                #filter(strstarts(str(?prop), ?ptags))
+            }            
+            """
+        );
+        pss.setLiteral("dcm", DCM.NS);
+        try {
+            request.add(pss.toString());
+            UpdateAction.execute(request,m);
+        } catch (Exception ex) {
+            System.out.println(ex.getMessage());
+            ex.printStackTrace();
+        } catch (Throwable t) {
+            System.out.println(t.getMessage());
+            t.printStackTrace();
+        }
+        return m;
+    }
 }
+/*
+            """
+            insert {
+                ?s dcm:hasPrivateElement [
+                    dcm:hasPrivateCreatorId ?PrivateCreatorID;
+                    dcm:hasElement [
+                        dcm:id ?tag ;
+                        dcm:value ?node
+                    ]
+                ]
+            }
+            where {
+                ?s ?prop ?node; a dcm:SOPInstance .
+                optional { ?s ?PrivateCreatorURI ?PrivateCreatorID }
+                {   select distinct ?prop ?tag ?PrivateCreatorURI ?groupprefix where { 
+                        ?s ?prop ?node; a dcm:SOPInstance .
+                        filter(dcm:isOddDicomTag(?prop))
+                        bind(replace(str(?prop),?dcm,"") as ?tag)
+                        bind(substr(?tag,1,4) as ?group)
+                        bind(concat(str(?dcm), ?group) as ?groupprefix)
+                        bind(iri(concat(?groupprefix,"0010")) as ?PrivateCreatorURI)                        
+                    }
+                }
+                bind(str(?prop) as ?sprop)
+                filter(strstarts(?sprop, ?groupprefix))
+            }            
+            """
+*/
