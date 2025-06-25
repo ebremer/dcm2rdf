@@ -42,6 +42,11 @@ public class Convert {
             throw new VRFormatException(String.format("Invalid time format. Expected HHMMSS.FFFFFF or subsets thereof [%s]", timeValue));
         }
         StringBuilder xsdTimeBuilder = new StringBuilder();
+        String hours = timeValue.substring(0, 2);
+        int nhours = Integer.parseInt(hours);
+        if ((nhours < 0) || (nhours > 23)) {
+            throw new NumberFormatException(String.format("Hours must be 0 - 23.  Invalid DICOM DS format [%s]", timeValue));
+        }
         xsdTimeBuilder.append(timeValue, 0, 2);
         if (timeValue.length() > 2) {
             xsdTimeBuilder.append(":").append(timeValue, 2, 4);
@@ -106,6 +111,9 @@ public class Convert {
 
     public static Literal toDS(String input) {
         String trimmedInput = input.trim();
+        if (input.isEmpty()) {
+            throw new NumberFormatException(String.format("Input does not match the DICOM DS format [%s]", input));
+        }
         if (trimmedInput.length() > 16) {
             throw new VRFormatException(String.format("Input exceeds maximum length of 16 characters [%s]", input));
         }

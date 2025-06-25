@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Stack;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.jena.datatypes.RDFDatatype;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -87,16 +88,27 @@ public class RDFWriter implements DicomInputHandler {
     private record ArrayType(Property name, ArrayList<RDFNode> array) {};
     private final Resource root;
     private final Path file;
+    private final Path src;
     private boolean validSOP = true;
     
-    public RDFWriter(Path file, Resource root) {
+    public RDFWriter(Path src, Path file, Resource root) {
+        this.src = src;
         this.file = file;
         this.root = root;
         this.m = root.getModel();
         this.stack.push(root);                
     }
-    
+
+    public RDFWriter(Path file, Resource root) {
+        this.src = null;
+        this.file = file;
+        this.root = root;
+        this.m = root.getModel();
+        this.stack.push(root);                
+    }
+   
     public RDFWriter(Resource root) {
+        this.src = null;
         this.file = null;
         this.root = root;
         this.m = root.getModel();
@@ -184,8 +196,8 @@ public class RDFWriter implements DicomInputHandler {
         } else if (dis.isExcludeBulkData()) {
             dis.readValue(dis, attrs);
 // skip annotation data.  Too bulky for the moment
-        } else if (TagUtils.toHexString(tag).equals("00660016")) {
-            dis.readValue(dis, attrs);
+        //} else if (TagUtils.toHexString(tag).equals("00660016")) {
+          //  dis.readValue(dis, attrs);
         } else {
             Resource bnode = m.createResource();    
             stack.peek().addProperty(m.createProperty(DCM.NS, TagUtils.toHexString(tag)), bnode);
@@ -247,19 +259,47 @@ public class RDFWriter implements DicomInputHandler {
                 try {
                     switch (vr) {
                         case DA -> arrays.peek().array().add(Convert.toDA(s));
-                        case DS -> arrays.peek().array().add(Convert.toDS(s));
+                        case DS -> {
+                            try {
+                                arrays.peek().array().add(Convert.toDS(s));
+                            } catch (VRFormatException err) {                             
+                                logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
+                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
+                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                validSOP = false;
+                            } catch (NumberFormatException err) {
+                                logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
+                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
+                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                validSOP = false;                    
+                            }
+                        }
                         case IS -> arrays.peek().array().add(Convert.toIS(s));
                         case PN -> writePersonName(s);
-                        case TM -> arrays.peek().array().add(Convert.toTM(s));
+                        case TM -> {
+                            try {
+                                arrays.peek().array().add(Convert.toTM(s));
+                            } catch (VRFormatException err) {                             
+                                logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
+                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
+                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                validSOP = false;
+                            } catch (NumberFormatException err) {
+                                logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
+                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
+                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                validSOP = false;                    
+                            }                            
+                        }
                         default -> arrays.peek().array().add(m.createTypedLiteral(s));
                     }
                 } catch (VRFormatException err) {
-                    logger.log(Level.WARNING, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), root});
+                    logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                     arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
                     root.addLiteral(DCM.invalidSOPInstance, true);
                     validSOP = false;
                 } catch (NumberFormatException err) {
-                    logger.log(Level.WARNING, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), root});
+                    logger.log(Level.WARNING, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                     arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
                     root.addLiteral(DCM.invalidSOPInstance, true);
                     validSOP = false;                    

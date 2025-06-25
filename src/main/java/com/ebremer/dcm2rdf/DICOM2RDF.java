@@ -110,7 +110,7 @@ public class DICOM2RDF {
         return root.getModel();
     }
     
-    public Model toModel(Resource root, Path file, InputStream is) {
+    public Model toModel(Path src, Resource root, Path file, InputStream is) {
         if ( params.hash || params.naming.equals("SHA256") ) {  
             try {
                 Sha256CalculatingInputStream hashis = new Sha256CalculatingInputStream(is);
@@ -132,7 +132,7 @@ public class DICOM2RDF {
             try {
                 DicomInputStream dis = new DicomInputStream(is);  
                 dis.setIncludeBulkData(IncludeBulkData.NO);
-                RDFWriter rdfwriter = new RDFWriter(file, root);
+                RDFWriter rdfwriter = new RDFWriter(src, file, root);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
@@ -144,11 +144,11 @@ public class DICOM2RDF {
         return root.getModel();
     }
 
-    public Model ProcessDICOMasBytes2Model(String file, InputStream is) {
+    public Model ProcessDICOMasBytes2Model(Path src, String file, InputStream is) {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
         root.addProperty(RDF.type, DCM.SOPInstance);
-        toModel(root, Path.of(file), is);
+        toModel(src, root, Path.of(file), is);
         if (params.hash) {
             if (hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
@@ -595,7 +595,7 @@ public class DICOM2RDF {
         return m;
     }
     
-    public Model PtagTweak(Model m) {
+    public Model PtagTweak2(Model m) {
         UpdateRequest request = UpdateFactory.create();
         /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
         
@@ -610,7 +610,9 @@ public class DICOM2RDF {
         ParameterizedSparqlString pss = PSS.getPSS(
             """
             insert {
-                ?s  dcm:AAA ?id;
+                ?s
+                    dcm:hasPrivateElement 
+                    dcm:AAA ?id;
                     dcm:BBB ?creator;
                     dcm:CCC ?ptags;
                     dcm:DDD ?PrivateCreatorId;
@@ -648,6 +650,152 @@ public class DICOM2RDF {
         }
         return m;
     }
+
+    public Model PtagTweak3(Model m) {
+        UpdateRequest request = UpdateFactory.create();
+        /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
+        
+            urn:oid:1.2.3.4.5 dcm:hasPrivateElement  [
+                dcm:hasPrivateCreatorId "Private Creator ID";
+                dcm:hasElement [
+                    dcm:id "XX" ;
+                    dcm:value "some arbitrary value" .
+                ]
+            ]  .
+        */
+        ParameterizedSparqlString pss = PSS.getPSS(
+            """
+            insert {
+                ?s
+                    dcm:hasPrivateElement ?xbn .
+                    ?xbn
+                        dcm:hasPrivateCreatorId ?PrivateCreatorId;
+                        dcm:group ?group;
+                        dcm:XX ?id;
+                        dcm:hasElement [
+                            dcm:id ?pid;
+                            dcm:Value ?node
+                        ]                     
+            }
+            where {
+                ?s
+                    ?prop ?node;
+                    ?PrivateCreatorURI ?bn;
+                    a dcm:SOPInstance .
+                    ?bn dcm:Value/rdf:first ?PrivateCreatorId
+                    filter(strstarts(str(?prop),?ptags))
+                    #filter(?prop != ?PrivateCreatorURI)
+                    bind(replace(str(?prop),?dcm,"") as ?tag)
+                    bind(substr(?tag,7,2) as ?pid)                    
+                    
+                {   select distinct ?id ?ptags ?PrivateCreatorURI ?group ?xbn where {
+            
+                        ?s ?prop ?node; a dcm:SOPInstance .
+            
+                        filter(dcm:isOddDicomTag(?prop))
+            
+                        bind(replace(str(?prop),?dcm,"") as ?tag)
+                        bind(substr(?tag,1,4) as ?group)
+                        bind(substr(?tag,7,2) as ?id)
+                        bind(concat(?dcm,?group,"00") as ?creator)
+                        bind(concat(?dcm,?group,?id) as ?ptags)
+                        bind(?prop as ?PrivateCreatorURI)                        
+                        filter(strstarts(str(?prop),?creator))
+                        bind(bnode(str(?PrivateCreatorURI)) as ?xbn)
+                    }
+                }
+            }            
+            """
+        );
+        pss.setLiteral("dcm", DCM.NS);
+        try {
+            request.add(pss.toString());
+            UpdateAction.execute(request,m);
+        } catch (Exception ex) {
+            System.out.println(ex.getMessage());
+            ex.printStackTrace();
+        } catch (Throwable t) {
+            System.out.println(t.getMessage());
+            t.printStackTrace();
+        }
+        return m;
+    } 
+    
+    public Model PtagTweak(Model m) {
+        UpdateRequest request = UpdateFactory.create();
+        /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
+        
+            urn:oid:1.2.3.4.5 dcm:hasPrivateElement  [
+                dcm:hasPrivateCreatorId "Private Creator ID";
+                dcm:hasElement [
+                    dcm:id "XX" ;
+                    dcm:value "some arbitrary value" .
+                ]
+            ]  .
+        */
+        ParameterizedSparqlString pss = PSS.getPSS(
+            """
+            insert {
+                ?s
+                    dcm:hasPrivateElement ?xbn .
+                    ?xbn
+                        dcm:hasPrivateCreatorId ?PrivateCreatorId;
+                        dcm:group ?group;
+                        dcm:XX ?id;
+                        dcm:hasElement [
+                            dcm:id ?pid;
+                            dcm:Value ?node
+                        ]                     
+            }
+            where {
+                ?s
+                    ?prop ?node;
+                    ?PrivateCreatorURI ?bn;
+                    a dcm:SOPInstance .
+                    ?bn dcm:Value/rdf:first ?PrivateCreatorId
+                    filter(strstarts(str(?prop),?ptags))
+                    filter(?PrivateCreatorURI != ?node)
+                    bind(replace(str(?prop),?dcm,"") as ?tag)
+                    bind(substr(?tag,1,4) as ?group)
+                    bind(substr(?tag,7,2) as ?pid)                    
+            
+                    { select ?id ?ptags ?PrivateCreatorURI ?xbn where {
+                            #bind(str(concat(?group,"00")) as ?wow)                    
+                            {   select distinct ?id ?ptags ?PrivateCreatorURI ?creatortag where {
+            
+                                    ?s ?prop ?node; a dcm:SOPInstance .
+            
+                                    filter(dcm:isOddDicomTag(?prop))
+            
+                                    bind(replace(str(?prop),?dcm,"") as ?tag)
+                                    bind(substr(?tag,1,4) as ?group)
+                                    bind(substr(?tag,7,2) as ?id)
+                                    bind(concat(?group,"00",?id) as ?creatortag)
+                                    bind(concat(?dcm,?group,"00") as ?creator)
+                                    bind(concat(?dcm,?group,?id) as ?ptags)
+                                    bind(?prop as ?PrivateCreatorURI)
+                                    filter(strstarts(str(?prop),?creator))                        
+                                }
+                            }
+                        bind(bnode(?creatortag) as ?xbn)
+                    }
+                }
+            }            
+            """
+        );
+        pss.setLiteral("dcm", DCM.NS);
+        try {
+            request.add(pss.toString());
+            UpdateAction.execute(request,m);
+        } catch (Exception ex) {
+            System.out.println(ex.getMessage());
+            ex.printStackTrace();
+        } catch (Throwable t) {
+            System.out.println(t.getMessage());
+            t.printStackTrace();
+        }
+        return m;
+    }    
 }
 /*
             """

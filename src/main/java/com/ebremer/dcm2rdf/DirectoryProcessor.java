@@ -166,7 +166,7 @@ class FileProcessor implements Callable<Model> {
 
     public Model ScanMeta(Parameters params, String xfile, InputStream is) {
         DICOM2RDF d2r = new DICOM2RDF(params);     
-        Model m = d2r.ProcessDICOMasBytes2Model(xfile, is);                 
+        Model m = d2r.ProcessDICOMasBytes2Model(file, xfile, is);                 
         if (!params.LongForm) {
             if (params.oid) {
                m = d2r.OptimizeUR2URNOID(m);
