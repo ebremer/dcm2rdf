@@ -2,6 +2,7 @@ package com.ebremer.dcm2rdf;
 
 import com.ebremer.dcm2rdf.utils.VRFormatException;
 import com.ebremer.dcm2rdf.ns.DCM;
+import com.ebremer.dcm2rdf.parameters.Parameters;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Stack;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.jena.datatypes.RDFDatatype;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -24,6 +24,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.BulkData;
+import org.dcm4che3.data.ElementDictionary;
 import org.dcm4che3.data.Fragments;
 import org.dcm4che3.data.PersonName;
 import org.dcm4che3.data.PersonName.Group;
@@ -90,29 +91,33 @@ public class RDFWriter implements DicomInputHandler {
     private final Path file;
     private final Path src;
     private boolean validSOP = true;
+    private Parameters params;
     
-    public RDFWriter(Path src, Path file, Resource root) {
+    public RDFWriter(Path src, Path file, Resource root, Parameters params) {
         this.src = src;
         this.file = file;
         this.root = root;
         this.m = root.getModel();
-        this.stack.push(root);                
+        this.stack.push(root);
+        this.params = params;
     }
 
-    public RDFWriter(Path file, Resource root) {
+    public RDFWriter(Path file, Resource root, Parameters params) {
         this.src = null;
         this.file = file;
         this.root = root;
         this.m = root.getModel();
-        this.stack.push(root);                
+        this.stack.push(root);
+        this.params = params;
     }
    
-    public RDFWriter(Resource root) {
+    public RDFWriter(Resource root, Parameters params) {
         this.src = null;
         this.file = null;
         this.root = root;
         this.m = root.getModel();
-        this.stack.push(root);                
+        this.stack.push(root);
+        this.params = params;
     }
     
     public String getReplaceBulkDataURI() {
@@ -170,9 +175,9 @@ public class RDFWriter implements DicomInputHandler {
                     if (frag instanceof Value && ((Value) frag).isEmpty()) {
                         arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
                     } else {
-                        if (frag instanceof BulkData bulkData)
+                        if (frag instanceof BulkData bulkData) {
                             writeBulkData(bulkData);
-                        else {
+                        } else {
                             writeInlineBinary(frags.vr(), (byte[]) frag, bigEndian, true);
                         }
                     }
@@ -199,8 +204,24 @@ public class RDFWriter implements DicomInputHandler {
         //} else if (TagUtils.toHexString(tag).equals("00660016")) {
           //  dis.readValue(dis, attrs);
         } else {
-            Resource bnode = m.createResource();    
-            stack.peek().addProperty(m.createProperty(DCM.NS, TagUtils.toHexString(tag)), bnode);
+            Resource bnode = m.createResource();
+            Property prop;
+            if (params.keywords) {
+                String privateCreator = attrs.getPrivateCreator(tag);
+                if (privateCreator==null) {
+                    String keyword = ElementDictionary.keywordOf(tag, privateCreator);
+                    if (keyword.equals("PrivateCreatorID")) {
+                        prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
+                    } else {
+                        prop = m.createProperty(DCM.NS, keyword);
+                    }
+                } else {
+                    prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
+                }
+            } else {
+                prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
+            }
+            stack.peek().addProperty(prop, bnode);
             stack.push(bnode);
             stack.peek().addLiteral(pvr, vr.name());
             if (vr == VR.SQ || len == -1) {
@@ -265,12 +286,12 @@ public class RDFWriter implements DicomInputHandler {
                             } catch (VRFormatException err) {                             
                                 logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
                                 arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
-                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                //root.addLiteral(DCM.invalidSOPInstance, true);
                                 validSOP = false;
                             } catch (NumberFormatException err) {
                                 logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                                 arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
-                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                //root.addLiteral(DCM.invalidSOPInstance, true);
                                 validSOP = false;                    
                             }
                         }
@@ -282,12 +303,12 @@ public class RDFWriter implements DicomInputHandler {
                             } catch (VRFormatException err) {                             
                                 logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
                                 arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
-                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                //root.addLiteral(DCM.invalidSOPInstance, true);
                                 validSOP = false;
                             } catch (NumberFormatException err) {
                                 logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                                 arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
-                                root.addLiteral(DCM.invalidSOPInstance, true);
+                                //root.addLiteral(DCM.invalidSOPInstance, true);
                                 validSOP = false;                    
                             }                            
                         }
@@ -296,12 +317,12 @@ public class RDFWriter implements DicomInputHandler {
                 } catch (VRFormatException err) {
                     logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                     arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
-                    root.addLiteral(DCM.invalidSOPInstance, true);
+                    //root.addLiteral(DCM.invalidSOPInstance, true);
                     validSOP = false;
                 } catch (NumberFormatException err) {
                     logger.log(Level.WARNING, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
                     arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
-                    root.addLiteral(DCM.invalidSOPInstance, true);
+                    //root.addLiteral(DCM.invalidSOPInstance, true);
                     validSOP = false;                    
                 }
             }
@@ -429,8 +450,12 @@ public class RDFWriter implements DicomInputHandler {
     private void writeInlineBinary(VR vr, byte[] b, boolean bigEndian, boolean preserve) {
         if (bigEndian) {
             b = vr.toggleEndian(b, preserve);
-        }       
-        stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(java.util.Base64.getEncoder().encodeToString(b), XSDDatatype.XSDbase64Binary));
+        }
+        if (!params.includeinlinebinary) {
+            stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral("", XSDDatatype.XSDbase64Binary));
+        } else {
+            stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(java.util.Base64.getEncoder().encodeToString(b), XSDDatatype.XSDbase64Binary));
+        }
     }
 
     private void writeBulkData(BulkData blkdata) {

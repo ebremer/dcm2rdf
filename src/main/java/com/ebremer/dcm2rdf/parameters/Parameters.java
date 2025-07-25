@@ -68,7 +68,13 @@ public class Parameters {
     
     @Parameter(names = {"-ptags"}, description = "if ptags is true, add alternate private tag representation", validateWith = Dcm2RdfValidator.class, hidden = false, order = 19)
     public boolean ptags = false; 
+
+    @Parameter(names = {"-includeinlinebinary"}, description = "will empty the inline binaries in the RDF file", validateWith = Dcm2RdfValidator.class, hidden = false, order = 20)
+    public boolean includeinlinebinary = false; 
     
-    @Parameter(names = {"-sbu"}, description = "if sbu is true, add SBU-specific tweaks", validateWith = Dcm2RdfValidator.class, hidden = true, order = 20)
+    @Parameter(names = {"-keywords"}, description = "Use keyword predicates instead of the tag-based", validateWith = Dcm2RdfValidator.class, hidden = false, order = 21)
+    public boolean keywords = false; 
+    
+    @Parameter(names = {"-sbu"}, description = "if sbu is true, add SBU-specific tweaks", validateWith = Dcm2RdfValidator.class, hidden = true, order = 22)
     public boolean sbu = false; 
 }

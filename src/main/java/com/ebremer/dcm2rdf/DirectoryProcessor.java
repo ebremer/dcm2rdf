@@ -230,7 +230,14 @@ class FileProcessor implements Callable<Model> {
     private STAT ProcessDICOM(Parameters params, String root, InputStream is) {        
         Path dest = Paths.get(RandomUtils.StripExtension(root)+(params.compress?".ttl.gz":".ttl"));
         if ( !dest.toFile().exists() || params.overwrite ) {
-            Model m = ScanMeta(params, root, is);
+            Model m = null;
+            try {
+                m = ScanMeta(params, root, is);
+            } catch (Exception ex) {
+               int r = 0;
+            } catch (Throwable t) {
+                int r = 0;                       
+            }
             if (params.cdt) {
                 m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
             }

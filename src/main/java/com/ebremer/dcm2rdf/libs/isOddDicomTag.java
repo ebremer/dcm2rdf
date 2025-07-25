@@ -4,6 +4,8 @@ import com.ebremer.dcm2rdf.ns.DCM;
 import org.apache.jena.graph.Node;
 import org.apache.jena.sparql.expr.NodeValue;
 import org.apache.jena.sparql.function.FunctionBase1;
+import org.dcm4che3.data.ElementDictionary;
+import org.dcm4che3.util.TagUtils;
 
 public class isOddDicomTag extends FunctionBase1 {
     
@@ -17,6 +19,10 @@ public class isOddDicomTag extends FunctionBase1 {
                 return NodeValue.FALSE;
             }
             String localPart = getLocalPart(uriString);
+            int tag = ElementDictionary.getStandardElementDictionary().tagForKeyword(localPart, null);
+            if (tag>0) {
+                localPart = TagUtils.toHexString(tag);
+            }
             if (localPart.matches("[0-9A-Fa-f]{8}")) {
                 String firstFourDigits = localPart.substring(0, 4);
                 int firstFour = Integer.parseInt(firstFourDigits, 16);
