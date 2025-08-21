@@ -7,7 +7,7 @@ import org.apache.jena.sparql.function.FunctionBase1;
 import org.dcm4che3.data.ElementDictionary;
 import org.dcm4che3.util.TagUtils;
 
-public class isEvenDicomTag extends FunctionBase1 {
+public class isOddDicomTag extends FunctionBase1 {
     
     @Override
     public NodeValue exec(NodeValue v) {        
@@ -22,12 +22,12 @@ public class isEvenDicomTag extends FunctionBase1 {
             int tag = ElementDictionary.getStandardElementDictionary().tagForKeyword(localPart, null);
             if (tag>0) {
                 localPart = TagUtils.toHexString(tag);
-            }            
+            }
             if (localPart.matches("[0-9A-Fa-f]{8}")) {
                 String firstFourDigits = localPart.substring(0, 4);
                 int firstFour = Integer.parseInt(firstFourDigits, 16);
                 boolean isEven = firstFour % 2 == 0;
-                return NodeValue.makeBoolean(isEven);
+                return NodeValue.makeBoolean(!isEven);
             } else {
                 return NodeValue.FALSE;
             }

@@ -41,7 +41,7 @@ public class DirectoryProcessor {
     private final Parameters params;
     private final FileCounter fc;
     private final ProgressBar progressBar;
-    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
+    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());    
     
     public DirectoryProcessor(Parameters params) {
         String os = System.getProperty("os.name").toLowerCase();
@@ -155,6 +155,7 @@ class FileProcessor implements Callable<Model> {
     private final FileCounter fc;
     private final DirectoryProcessor.FileType ft;
     private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
+    private enum STAT { CREATED, FAILED, ALREADYDONE };
 
     public FileProcessor(Parameters params, FileCounter fc, DirectoryProcessor.FileType ft, Path file) {
         this.params = params;
@@ -165,7 +166,7 @@ class FileProcessor implements Callable<Model> {
 
     public Model ScanMeta(Parameters params, String xfile, InputStream is) {
         DICOM2RDF d2r = new DICOM2RDF(params);     
-        Model m = d2r.ProcessDICOMasBytes2Model(xfile, is);                 
+        Model m = d2r.ProcessDICOMasBytes2Model(file, xfile, is);                 
         if (!params.LongForm) {
             if (params.oid) {
                m = d2r.OptimizeUR2URNOID(m);
@@ -181,14 +182,20 @@ class FileProcessor implements Callable<Model> {
             if (params.cdt) {
                 m = d2r.RDF2CDRLists(m);
             }
-            //d2r.PadLeftZero8(m);            
+            if (params.ptags) {
+                m = d2r.PtagTweak(m);
+            }
+            if (params.sbu) {
+                d2r.PadLeftZero8(m);
+            }
         }
         return m;
     }
 
     private void ProcessTar(TarArchiveInputStream tarInput, Path root) throws IOException {
         TarArchiveEntry ce = tarInput.getNextEntry();
-        while (ce != null) {            
+        boolean nohalt = true;       
+        while (ce != null) {
             if (ce.isDirectory()) {
                 if (params.status) fc.incrementTarDirectoryCount();
             } else {
@@ -200,7 +207,9 @@ class FileProcessor implements Callable<Model> {
                     switch(tft) {
                         case DICOM -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, root.toString()+"#"+ ce.getName(), tarInput);
+                            if (ProcessDICOM(params, root.toString()+"#"+ ce.getName(), tarInput)==STAT.ALREADYDONE) {
+                                nohalt = false;
+                            }
                         }
                         case DICOMDIR -> {
                             if (params.status) fc.incrementTarDicomFileCount();
@@ -214,14 +223,21 @@ class FileProcessor implements Callable<Model> {
                     }
                 }                
             }
-            ce = tarInput.getNextEntry();
+            ce = nohalt?tarInput.getNextEntry():null;
         }
     }
     
-    private void ProcessDICOM(Parameters params, String root, InputStream is) {        
+    private STAT ProcessDICOM(Parameters params, String root, InputStream is) {        
         Path dest = Paths.get(RandomUtils.StripExtension(root)+(params.compress?".ttl.gz":".ttl"));
         if ( !dest.toFile().exists() || params.overwrite ) {
-            Model m = ScanMeta(params, root, is);
+            Model m = null;
+            try {
+                m = ScanMeta(params, root, is);
+            } catch (Exception ex) {
+               int r = 0;
+            } catch (Throwable t) {
+                int r = 0;                       
+            }
             if (params.cdt) {
                 m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
             }
@@ -234,7 +250,10 @@ class FileProcessor implements Callable<Model> {
             if (!file.toFile().exists()) {
                 System.out.println("Failed to create : "+file);
             }
+        } else {
+            return STAT.ALREADYDONE;
         }
+        return STAT.CREATED;
     }
 
     @Override

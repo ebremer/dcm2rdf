@@ -29,12 +29,14 @@ import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
+import org.apache.jena.graph.Node;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.query.ParameterizedSparqlString;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
+import org.apache.jena.query.ResultSetFormatter;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -43,6 +45,8 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
 import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.riot.Lang;
+import org.apache.jena.shacl.vocabulary.SHACLM;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
@@ -85,7 +89,7 @@ public class DICOM2RDF {
     public Model toModel(Resource root, InputStream is) {
         try ( DicomInputStream dis = new DicomInputStream( is )) {         
             dis.setIncludeBulkData(IncludeBulkData.NO);
-            RDFWriter rdfwriter = new RDFWriter(root);
+            RDFWriter rdfwriter = new RDFWriter(root, params);
             dis.setDicomInputHandler(rdfwriter);            
             dis.readDatasetUntilPixelData();
         } catch (EOFException ex) {
@@ -99,7 +103,7 @@ public class DICOM2RDF {
     public Model toModel(Resource root, Path file, byte[] bytes) {
         try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){         
             dis.setIncludeBulkData(IncludeBulkData.NO);
-            RDFWriter rdfwriter = new RDFWriter(file, root);
+            RDFWriter rdfwriter = new RDFWriter(file, root, params);
             dis.setDicomInputHandler(rdfwriter);            
             dis.readDatasetUntilPixelData();
         } catch (EOFException ex) {
@@ -110,13 +114,13 @@ public class DICOM2RDF {
         return root.getModel();
     }
     
-    public Model toModel(Resource root, Path file, InputStream is) {
+    public Model toModel(Path src, Resource root, Path file, InputStream is) {
         if ( params.hash || params.naming.equals("SHA256") ) {  
             try {
                 Sha256CalculatingInputStream hashis = new Sha256CalculatingInputStream(is);
                 DicomInputStream dis = new DicomInputStream(hashis);
                 dis.setIncludeBulkData(IncludeBulkData.NO);
-                RDFWriter rdfwriter = new RDFWriter(file, root);
+                RDFWriter rdfwriter = new RDFWriter(file, root, params);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
                 hashis.readAllBytes();
@@ -132,7 +136,7 @@ public class DICOM2RDF {
             try {
                 DicomInputStream dis = new DicomInputStream(is);  
                 dis.setIncludeBulkData(IncludeBulkData.NO);
-                RDFWriter rdfwriter = new RDFWriter(file, root);
+                RDFWriter rdfwriter = new RDFWriter(src, file, root, params);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
@@ -144,11 +148,11 @@ public class DICOM2RDF {
         return root.getModel();
     }
 
-    public Model ProcessDICOMasBytes2Model(String file, InputStream is) {
+    public Model ProcessDICOMasBytes2Model(Path src, String file, InputStream is) {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
         root.addProperty(RDF.type, DCM.SOPInstance);
-        toModel(root, Path.of(file), is);
+        toModel(src, root, Path.of(file), is);
         if (params.hash) {
             if (hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
@@ -335,7 +339,11 @@ public class DICOM2RDF {
         ParameterizedSparqlString pss = new ParameterizedSparqlString(
         """
         select ?uid
-        where { ?s dcm:00080018/dcm:Value/rdf:first ?uid }
+        where {
+            { ?s dcm:00080018/dcm:Value/rdf:first ?uid }
+            union
+            { ?s dcm:SOPInstanceUID/dcm:Value/rdf:first ?uid }
+        }
         limit 1
         """);
         pss.setNsPrefix("dcm", DCM.NS);
@@ -387,10 +395,45 @@ public class DICOM2RDF {
         return m;
     }
     
+    public void TestME(Model m) {
+        //m.write(System.out, "TTL");
+        System.out.println("==============================================================");
+        Dataset ds = DatasetFactory.create();
+        ds.getDefaultModel().add(m);
+        //SHACL.getInstance().getModel().write(System.out, "TTL");
+        ds.addNamedModel("https://ebremer.com/dummy/shacl", SHACL.getInstance().getModel());
+        ParameterizedSparqlString pss = new ParameterizedSparqlString(
+            """
+            select ?s ?tag ?list
+            where {
+                                ?s ?tag ?list .
+                                ?list ?pp ?oo
+                                #?list rdf:first ?first; rdf:rest rdf:nil
+                                minus {?otherlist rdf:rest ?list }
+                                {select distinct ?tag where {
+                                        graph <https://ebremer.com/dummy/shacl> {
+                                            ?shape sh:maxCount 1;
+                                                   sh:path/sh:alternativePath/rdf:rest*/rdf:first ?tag
+                                        }
+                                    }
+                                }
+                            }
+            """);
+        pss.setNsPrefix("sh", SHACLM.NS);
+        pss.setNsPrefix("rdf", RDF.uri);
+        pss.setNsPrefix("dcm", DCM.NS);
+        pss.setLiteral("len", params.cdtlevel);        
+        ResultSet rs = QueryExecutionFactory.create(pss.toString(), ds).execSelect();
+        ResultSetFormatter.out(System.out, rs);
+        int v=0;
+    }
+    
     public Model OptimizeRemoveRDFListWhenAlwaysOne(Model m) {
+       // TestME(m);
         // remove rdf:List where VM is always 1
         Dataset ds = DatasetFactory.create();
         ds.getDefaultModel().add(m);
+       // SHACL.getInstance().getModel().write(System.out, "TTL");
         ds.addNamedModel("https://ebremer.com/dummy/shacl", SHACL.getInstance().getModel());
         UpdateRequest request = UpdateFactory.create();
         request.add(PSS.get(
@@ -406,13 +449,20 @@ public class DICOM2RDF {
                 ?s ?tag ?list .
                 ?list rdf:first ?first; rdf:rest rdf:nil
                 minus {?otherlist rdf:rest ?list }
-                {select distinct ?tag where { graph <https://ebremer.com/dummy/shacl> {?k sh:path ?tag; sh:maxCount 1 }}}
+                {select distinct ?tag where {
+                        graph <https://ebremer.com/dummy/shacl> {
+                            ?shape sh:maxCount 1;
+                                   sh:path/sh:alternativePath/rdf:rest*/rdf:first ?tag
+                        }
+                    }
+                }
             }
             """));   
         UpdateAction.execute(request,ds);
         Model yah = ds.getDefaultModel();
         yah.setNsPrefix("dcm", DCM.NS);
-        yah.setNsPrefix("xsd", XSD.NS);    
+        yah.setNsPrefix("xsd", XSD.NS);
+        //yah.write(System.out, "TTL");
         return yah;
     }
     
@@ -594,4 +644,85 @@ public class DICOM2RDF {
         }
         return m;
     }
+    
+    public Model PtagTweak(Model m) {
+       // TestME2(m);
+        UpdateRequest request = UpdateFactory.create();
+        /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
+        
+            urn:oid:1.2.3.4.5 dcm:hasPrivateElement  [
+                dcm:hasPrivateCreatorId "Private Creator ID";
+                dcm:hasElement [
+                    dcm:id "XX" ;
+                    dcm:value "some arbitrary value" .
+                ]
+            ]  .
+        */
+        ParameterizedSparqlString pss = PSS.getPSS(
+            """
+            delete {
+                ?s ?prop ?node .
+                ?s ?PrivateCreatorURI ?bn .
+                ?bn dcm:Value ?bnlist .
+                ?bnlist rdf:first ?PrivateCreatorId .
+                ?bnlist rdf:rest rdf:nil .
+                ?bn dcm:vr ?bno
+            }
+            insert {
+                ?s
+                    dcm:hasPrivateElement ?xbn .
+                    ?xbn
+                        dcm:hasPrivateCreatorId ?PrivateCreatorId;
+                        dcm:group ?group;
+                        dcm:id ?id;
+                        dcm:hasElement ?node .
+                        ?node dcm:id ?pid                  
+            }
+            where {
+                ?s
+                    ?prop ?node;
+                    ?PrivateCreatorURI ?bn;
+                    a dcm:SOPInstance .
+                    ?bn dcm:Value ?bnlist .
+                    ?bnlist rdf:first ?PrivateCreatorId .
+                    ?bnlist rdf:rest rdf:nil .
+                    ?bn dcm:vr ?bno
+                    filter(strstarts(str(?prop),?ptags))
+                    filter(?PrivateCreatorURI != ?node)
+                    bind(replace(str(?prop),?dcm,"") as ?tag)
+                    bind(substr(?tag,1,4) as ?group)
+                    bind(substr(?tag,7,2) as ?pid)
+                    { select ?id ?ptags ?PrivateCreatorURI ?xbn where {                 
+                            {   select distinct ?id ?ptags ?PrivateCreatorURI ?creatortag where {
+                                    ?s ?prop ?node; a dcm:SOPInstance .            
+                                    filter(dcm:isOddDicomTag(?prop))
+                                    bind(replace(str(?prop),?dcm,"") as ?tag)
+                                    bind(substr(?tag,1,4) as ?group)
+                                    bind(substr(?tag,7,2) as ?id)
+                                    bind(concat(?group,"00",?id) as ?creatortag)
+                                    bind(concat(?dcm,?group,"00") as ?creator)
+                                    bind(concat(?dcm,?group,?id) as ?ptags)
+                                    bind(?prop as ?PrivateCreatorURI)
+                                    filter(strstarts(str(?prop),?creator))                        
+                                }
+                            }
+                        bind(bnode(?creatortag) as ?xbn)
+                    }
+                }
+            }            
+            """
+        );
+        pss.setLiteral("dcm", DCM.NS);
+        try {
+            request.add(pss.toString());
+            UpdateAction.execute(request,m);
+        } catch (Exception ex) {
+            System.out.println(ex.getMessage());
+            ex.printStackTrace();
+        } catch (Throwable t) {
+            System.out.println(t.getMessage());
+            t.printStackTrace();
+        }
+        return m;
+    }    
 }
