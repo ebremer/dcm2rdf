@@ -60,8 +60,7 @@ Usage: dcm2rdf [options]
       results file will be gzipped compressed
       Default: false
     -L
-      Perform minimal conversion to RDF.  Warning - turns all tweaks and
-      optimizations off!
+      Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!
       Default: false
     -version
       Display software version
