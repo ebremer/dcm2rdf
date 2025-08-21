@@ -60,7 +60,8 @@ Usage: dcm2rdf [options]
       results file will be gzipped compressed
       Default: false
     -L
-      Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!
+      Perform minimal conversion to RDF.  Warning - turns all tweaks and
+      optimizations off!
       Default: false
     -version
       Display software version
@@ -99,8 +100,18 @@ Usage: dcm2rdf [options]
       Convert lists to complex data types (CDT)
       Default: false
     -cdtlevel
-      if cdt is true, only do mapping if list length is greater than this value 
-      Default: 3
+      if cdt is true, only do mapping if list length is greater than this
+      value
+      Default: 4
+    -ptags
+      if ptags is true, add alternate private tag representation
+      Default: false
+    -includeinlinebinary
+      will empty the inline binaries in the RDF file
+      Default: false
+    -keywords
+      Use keyword predicates instead of the tag-based
+      Default: false
 ```
 ## References
 - 2009 [Context-Driven Ontological Annotations In DICOM Images - Towards a semantic PACS](https://www.scitepress.org/PublishedPapers/2009/15502/15502.pdf)
