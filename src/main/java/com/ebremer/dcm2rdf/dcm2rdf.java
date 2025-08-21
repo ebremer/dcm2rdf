@@ -75,6 +75,7 @@ public class dcm2rdf {
                 System.out.println("Source does not exist! "+params.src);
             }
         } catch (ParameterException ex) {
+            System.out.println(ex.toString());
             if (params.version) {
                 System.out.println("dcm2rdf - Version : "+Version);
             } else {

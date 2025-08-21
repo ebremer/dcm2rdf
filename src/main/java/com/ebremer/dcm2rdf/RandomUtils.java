@@ -7,6 +7,7 @@ import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOMDIR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DIRECTORY;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.TAR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.UNKNOWN;
+import com.ebremer.dcm2rdf.parameters.Parameters;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -78,7 +79,7 @@ public class RandomUtils {
         return name;
     }
 
-    public static void DumpModel(Model m, Path file, boolean compress) {
+    public static void DumpModel(Model m, Path file, Parameters params) {
         m.setNsPrefix("xsd", XSD.NS);
         m.setNsPrefix("prov", PROVO.NS);
         m.setNsPrefix("rdf", RDF.uri);
@@ -86,9 +87,9 @@ public class RandomUtils {
         if (!file.getParent().toFile().exists()) {
             file.getParent().toFile().mkdirs();
         }
-        if (compress) {
+        if (params.compress) {
             try (OutputStream fos = new GZIPOutputStream(new FileOutputStream(file.toFile()))) {
-                RDFDataMgr.write(fos, m, RDFFormat.TURTLE_PRETTY);
+                RDFDataMgr.write(fos, m, params.format.getRDFFormat());
             } catch (FileNotFoundException ex) {
                 Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {
@@ -96,7 +97,7 @@ public class RandomUtils {
             } 
         } else {
             try (FileOutputStream fos = new FileOutputStream(file.toFile())) {
-                RDFDataMgr.write(fos, m, RDFFormat.TURTLE_PRETTY);
+                RDFDataMgr.write(fos, m, params.format.getRDFFormat());
             } catch (IOException ex) {
                 Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
             }

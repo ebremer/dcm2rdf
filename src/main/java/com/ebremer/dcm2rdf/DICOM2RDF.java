@@ -16,6 +16,7 @@ import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -29,7 +30,6 @@ import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
-import org.apache.jena.graph.Node;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.query.ParameterizedSparqlString;
@@ -45,7 +45,6 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
 import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.riot.Lang;
 import org.apache.jena.shacl.vocabulary.SHACLM;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
@@ -86,20 +85,6 @@ public class DICOM2RDF {
         return this.params;
     }
 
-    public Model toModel(Resource root, InputStream is) {
-        try ( DicomInputStream dis = new DicomInputStream( is )) {         
-            dis.setIncludeBulkData(IncludeBulkData.NO);
-            RDFWriter rdfwriter = new RDFWriter(root, params);
-            dis.setDicomInputHandler(rdfwriter);            
-            dis.readDatasetUntilPixelData();
-        } catch (EOFException ex) {
-            logger.log(Level.SEVERE, "End of File");
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Problem with File");
-        }
-        return root.getModel();
-    }
-    
     public Model toModel(Resource root, Path file, byte[] bytes) {
         try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){         
             dis.setIncludeBulkData(IncludeBulkData.NO);
@@ -114,6 +99,7 @@ public class DICOM2RDF {
         return root.getModel();
     }
     
+    // Support 
     public Model toModel(Path src, Resource root, Path file, InputStream is) {
         if ( params.hash || params.naming.equals("SHA256") ) {  
             try {
@@ -139,7 +125,9 @@ public class DICOM2RDF {
                 RDFWriter rdfwriter = new RDFWriter(src, file, root, params);
                 dis.setDicomInputHandler(rdfwriter);
                 dis.readDatasetUntilPixelData();
-                Statistics.getStatistics().AddFile(file.toFile().length(), 1);
+                if (file!=null) {
+                    Statistics.getStatistics().AddFile(file.toFile().length(), 1);
+                }
                 Statistics.getStatistics().AddActuallyRead(dis.getPosition());
             } catch (IOException ex) {
                 Logger.getLogger(DICOM2RDF.class.getName()).log(Level.SEVERE, null, ex);
@@ -148,6 +136,7 @@ public class DICOM2RDF {
         return root.getModel();
     }
 
+    // Primary
     public Model ProcessDICOMasBytes2Model(Path src, String file, InputStream is) {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
@@ -179,8 +168,14 @@ public class DICOM2RDF {
                 }
                 default -> throw new Error("Problem with file : "+file);
             }
-            root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));
-            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(Path.of(file).toFile().length()), XSDDatatype.XSDinteger ) );
+            //Path rr = Path.of(params.src.toString(), ffile);
+            //boolean haha = rr.toFile().exists();
+            //URI uu = rr.toUri();
+            Resource zxxc = m.createResource(uri.toString());
+            File uuu = new File(file);
+            long bs = uuu.length();
+            root.addProperty(PROVO.wasDerivedFrom, zxxc);
+            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(bs), XSDDatatype.XSDinteger ) );
         }
         m.setNsPrefix("dcm", DCM.NS);                        
         Optional<String> uid = getSOPInstanceUID(m);

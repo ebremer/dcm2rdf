@@ -207,13 +207,13 @@ class FileProcessor implements Callable<Model> {
                     switch(tft) {
                         case DICOM -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            if (ProcessDICOM(params, root.toString()+"#"+ ce.getName(), tarInput)==STAT.ALREADYDONE) {
+                            if (ProcessDICOM(params, "", root.toString()+"#"+ ce.getName(), tarInput)==STAT.ALREADYDONE) {
                                 nohalt = false;
                             }
                         }
                         case DICOMDIR -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, root.toString()+"#"+ce.getName(), tarInput);
+                            ProcessDICOM(params, "", root.toString()+"#"+ce.getName(), tarInput);
                         }
                         case TAR -> {
                             if (params.status) fc.incrementTarFileCount();
@@ -227,17 +227,11 @@ class FileProcessor implements Callable<Model> {
         }
     }
     
-    private STAT ProcessDICOM(Parameters params, String root, InputStream is) {        
-        Path dest = Paths.get(RandomUtils.StripExtension(root)+(params.compress?".ttl.gz":".ttl"));
+    private STAT ProcessDICOM(Parameters params, String src, String fdest, InputStream is) {        
+        //Path dest = Paths.get(RandomUtils.StripExtension(fdest)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
+        Path dest = Paths.get(fdest);
         if ( !dest.toFile().exists() || params.overwrite ) {
-            Model m = null;
-            try {
-                m = ScanMeta(params, root, is);
-            } catch (Exception ex) {
-               int r = 0;
-            } catch (Throwable t) {
-                int r = 0;                       
-            }
+            Model m = ScanMeta(params, src, is);
             if (params.cdt) {
                 m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
             }
@@ -245,7 +239,7 @@ class FileProcessor implements Callable<Model> {
                 dest.toFile().delete();
             }
             if ((m!=null)&&(m.size()!=0)) {                                
-                RandomUtils.DumpModel(m,dest,params.compress);
+                RandomUtils.DumpModel(m,dest,params);
             }
             if (!file.toFile().exists()) {
                 System.out.println("Failed to create : "+file);
@@ -262,9 +256,9 @@ class FileProcessor implements Callable<Model> {
         switch (ft) {
             case DICOM -> {
                 try (FileInputStream fis = new FileInputStream(file.toFile())) {
-                    Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?".ttl.gz":".ttl"));
+                    Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
                     if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, frag, fis);
+                        ProcessDICOM(params, file.toString(), xdest.toString(), fis);
                     }
                 } catch (FileNotFoundException ex) {
                     logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
@@ -274,9 +268,9 @@ class FileProcessor implements Callable<Model> {
             }
             case DICOMDIR -> {
                 try (FileInputStream fis = new FileInputStream(file.toFile())) {
-                    Path xdest = Paths.get(frag+(params.compress?".ttl.gz":".ttl"));
+                    Path xdest = Paths.get(frag+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
                     if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, frag, fis);
+                        ProcessDICOM(params, "", frag, fis);
                     }
                 } catch (FileNotFoundException ex) {
                     logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
