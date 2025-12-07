@@ -18,7 +18,6 @@ import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.RDFFormat;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
 

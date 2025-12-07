@@ -35,8 +35,8 @@ public class Parameters {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Compress : "+compress).append("\n");
-        sb.append("Format   : "+format).append("\n");
+        sb.append("Compress : ").append(compress).append("\n");
+        sb.append("Format   : ").append(format).append("\n");
         //sb.append("Compress : "+compress).append("\n");
         return sb.toString();
     }
