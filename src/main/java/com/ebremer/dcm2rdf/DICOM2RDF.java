@@ -11,9 +11,6 @@ import com.ebremer.dcm2rdf.ns.DCM;
 import com.ebremer.dcm2rdf.utils.Sha256CalculatingInputStream;
 import com.ebremer.dcm2rdf.utils.Statistics;
 import com.ebremer.dcm2rdf.utils.Tools;
-import jakarta.json.Json;
-import jakarta.json.JsonArray;
-import jakarta.json.JsonArrayBuilder;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.File;
@@ -36,23 +33,24 @@ import org.apache.jena.query.ParameterizedSparqlString;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.query.ResultSetFormatter;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFList;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
 import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.shacl.vocabulary.SHACLM;
 import org.apache.jena.update.UpdateAction;
 import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.XSD;
+import org.dcm4che3.data.ElementDictionary;
 import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
+import org.dcm4che3.util.TagUtils;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LinearRing;
@@ -85,6 +83,19 @@ public class DICOM2RDF {
         return this.params;
     }
 
+    // A tag's predicate is hex-based, or keyword-based when -keywords is on; post-processing must match both
+    private List<Property> tagProperties(int tag) {
+        List<Property> props = new ArrayList<>();
+        props.add(ResourceFactory.createProperty(DCM.NS, TagUtils.toHexString(tag)));
+        if (params.keywords) {
+            String keyword = ElementDictionary.keywordOf(tag, null);
+            if (keyword != null && !keyword.isEmpty()) {
+                props.add(ResourceFactory.createProperty(DCM.NS, keyword));
+            }
+        }
+        return props;
+    }
+
     public Model toModel(Resource root, Path file, byte[] bytes) {
         try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){         
             dis.setIncludeBulkData(IncludeBulkData.NO);
@@ -92,7 +103,7 @@ public class DICOM2RDF {
             dis.setDicomInputHandler(rdfwriter);            
             dis.readDatasetUntilPixelData();
         } catch (EOFException ex) {
-            logger.log(Level.SEVERE, "End of File", file);
+            logger.log(Level.SEVERE, "End of File {0}", file);
         } catch (IOException ex) {
             logger.log(Level.SEVERE, "Problem with File {0}", file);
         }
@@ -114,9 +125,9 @@ public class DICOM2RDF {
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
                 Statistics.getStatistics().AddActuallyRead(file.toFile().length());
             } catch (IOException ex) {
-                logger.log(Level.SEVERE, "Problem with File {0}", root);
+                logger.log(Level.SEVERE, "Problem with File {0}", file);
             } catch (NoSuchAlgorithmException ex) {
-                logger.log(Level.SEVERE, "NoSuchAlgorithmException with File {0}", root);
+                logger.log(Level.SEVERE, "NoSuchAlgorithmException with File {0}", file);
             }
         } else {
             try {
@@ -130,7 +141,7 @@ public class DICOM2RDF {
                 }
                 Statistics.getStatistics().AddActuallyRead(dis.getPosition());
             } catch (IOException ex) {
-                Logger.getLogger(DICOM2RDF.class.getName()).log(Level.SEVERE, null, ex);
+                logger.log(Level.SEVERE, String.format("Problem with File %s", file), ex);
             }
         }        
         return root.getModel();
@@ -147,35 +158,33 @@ public class DICOM2RDF {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, hash.get());
             } else {
-                throw new Error("HASH not calculated : "+file);
+                throw new IllegalStateException("HASH not calculated : "+file);
             }
         }
         if (params.extra) {
             m.setNsPrefix("bib", LOC.BibFrame.NS);
             m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
-            String[] parts = file.split("#");  //
+            // Archive members are addressed as <archive>#<entry>; the first '#' separates the two.
+            // Path.toUri()/the URI constructor handle all percent-encoding (spaces, '#' in entry names, ...)
+            String[] parts = file.split("#", 2);
             URI uri;
-            String ffile = file.replace(" ", "%20");
-            switch (parts.length) {
-                case 1 -> uri = Path.of(ffile).toUri();
-                case 2 -> {
-                    URI xuri = Path.of(parts[0]).toUri();
-                    try {
-                        uri = new URI(xuri.getScheme(), "", xuri.getPath(), parts[1]);
-                    } catch (URISyntaxException ex) {
-                        throw new Error("Problem with file : "+file);
-                    }
+            if (parts.length == 1) {
+                uri = Path.of(file).toUri();
+            } else {
+                URI xuri = Path.of(parts[0]).toUri();
+                try {
+                    uri = new URI(xuri.getScheme(), "", xuri.getPath(), parts[1]);
+                } catch (URISyntaxException ex) {
+                    throw new IllegalArgumentException("Problem with file : "+file, ex);
                 }
-                default -> throw new Error("Problem with file : "+file);
             }
-            //Path rr = Path.of(params.src.toString(), ffile);
-            //boolean haha = rr.toFile().exists();
-            //URI uu = rr.toUri();
-            Resource zxxc = m.createResource(uri.toString());
-            File uuu = new File(file);
-            long bs = uuu.length();
-            root.addProperty(PROVO.wasDerivedFrom, zxxc);
-            root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(bs), XSDDatatype.XSDinteger ) );
+            root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));
+            if (parts.length == 1) {
+                File srcFile = new File(file);
+                if (srcFile.isFile()) {
+                    root.addLiteral( LOC.BibFrame.FileSize, ResourceFactory.createTypedLiteral(String.valueOf(srcFile.length()), XSDDatatype.XSDinteger ) );
+                }
+            }
         }
         m.setNsPrefix("dcm", DCM.NS);                        
         Optional<String> uid = getSOPInstanceUID(m);
@@ -184,16 +193,16 @@ public class DICOM2RDF {
                 if (hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
-                    FlipURI(root.toString(), vv.toString(), m);                    
+                    FlipURI(root.toString(), vv.toString(), m);
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file);
+                    throw new IllegalStateException("SHA256 hash not calculated for "+file);
                 }
             }
             default -> {
                 if (uid.isPresent()) {
                     FlipURI(root.toString(), "urn:oid:"+uid.get(), m);
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file);
+                    throw new IllegalStateException("File missing SOP Instance UID: "+file);
                 }
             }     
         }
@@ -204,10 +213,18 @@ public class DICOM2RDF {
         Model m = ModelFactory.createDefaultModel();     
         Resource root = m.createResource(String.format("urn:uuid:%s",UUID.randomUUID().toString()));
         Optional<String> sha256Hash = Optional.empty();
+        // the hash is needed by -hash, by SHA256 naming, and by -extra - not just by -extra
+        if (params.hash || "SHA256".equals(params.naming) || (params.extra&&(!params.LongForm))) {
+            sha256Hash = Optional.ofNullable(HashGeneratorUtils.generateSHA256(bytes));
+        }
+        if (params.hash && sha256Hash.isPresent()) {
+            m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
+            root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
+            root.addProperty(LOC.cryptographicHashFunctions.sha256, sha256Hash.get());
+        }
         if (params.extra&&(!params.LongForm)) {
             m.setNsPrefix("bib", LOC.BibFrame.NS);
             m.setNsPrefix("cry", LOC.cryptographicHashFunctions.NS);
-            sha256Hash = Optional.of(HashGeneratorUtils.generateSHA256(bytes));
             if (sha256Hash.isPresent()) {
                 root.addProperty(PROVO.wasDerivedFrom, m.createResource(String.format("urn:sha256:%s",sha256Hash.get())));
                 root.addProperty(LOC.cryptographicHashFunctions.sha256, sha256Hash.get());
@@ -215,7 +232,7 @@ public class DICOM2RDF {
             try {
                 URI xx = file.toUri();
                 URI uri = new URI("file", "", xx.getPath(), null);
-                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString().replace(" ", "%20")));              
+                root.addProperty(PROVO.wasDerivedFrom, m.createResource(uri.toString()));
             } catch (URISyntaxException ex) {
                 logger.log(Level.SEVERE, ex.getMessage(), file);
             }
@@ -232,16 +249,16 @@ public class DICOM2RDF {
                 if (sha256Hash.isPresent()) {                   
                     Resource vv = m.createResource(String.format("urn:sha256:%s",sha256Hash.get()));
                     m.removeAll(root, PROVO.wasDerivedFrom, vv);
-                    FlipURI(root.toString(), vv.toString(), m);                    
+                    FlipURI(root.toString(), vv.toString(), m);
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                    throw new IllegalStateException("SHA256 hash not calculated for "+file);
                 }
             }
             default -> {
                 if (uid.isPresent()) {
                     FlipURI(root.toString(), "urn:oid:"+uid.get(), m);
                 } else {
-                    throw new Error("File missing SOP Instance UID: "+file.toString());
+                    throw new IllegalStateException("File missing SOP Instance UID: "+file);
                 }
             }     
         }
@@ -347,7 +364,7 @@ public class DICOM2RDF {
         if (rs.hasNext()) {
             QuerySolution qs = rs.next();
             RDFNode xuid = qs.get("uid");
-            return Optional.of(xuid.asLiteral().toString());
+            return Optional.of(xuid.asLiteral().getString());
         }
         return Optional.empty();
     }
@@ -390,41 +407,7 @@ public class DICOM2RDF {
         return m;
     }
     
-    public void TestME(Model m) {
-        //m.write(System.out, "TTL");
-        System.out.println("==============================================================");
-        Dataset ds = DatasetFactory.create();
-        ds.getDefaultModel().add(m);
-        //SHACL.getInstance().getModel().write(System.out, "TTL");
-        ds.addNamedModel("https://ebremer.com/dummy/shacl", SHACL.getInstance().getModel());
-        ParameterizedSparqlString pss = new ParameterizedSparqlString(
-            """
-            select ?s ?tag ?list
-            where {
-                                ?s ?tag ?list .
-                                ?list ?pp ?oo
-                                #?list rdf:first ?first; rdf:rest rdf:nil
-                                minus {?otherlist rdf:rest ?list }
-                                {select distinct ?tag where {
-                                        graph <https://ebremer.com/dummy/shacl> {
-                                            ?shape sh:maxCount 1;
-                                                   sh:path/sh:alternativePath/rdf:rest*/rdf:first ?tag
-                                        }
-                                    }
-                                }
-                            }
-            """);
-        pss.setNsPrefix("sh", SHACLM.NS);
-        pss.setNsPrefix("rdf", RDF.uri);
-        pss.setNsPrefix("dcm", DCM.NS);
-        pss.setLiteral("len", params.cdtlevel);        
-        ResultSet rs = QueryExecutionFactory.create(pss.toString(), ds).execSelect();
-        ResultSetFormatter.out(System.out, rs);
-        int v=0;
-    }
-    
     public Model OptimizeRemoveRDFListWhenAlwaysOne(Model m) {
-       // TestME(m);
         // remove rdf:List where VM is always 1
         Dataset ds = DatasetFactory.create();
         ds.getDefaultModel().add(m);
@@ -479,22 +462,6 @@ public class DICOM2RDF {
         }
     }
         
-    public static JsonArray flattenList2JsonArray(RDFList rdfList) {
-        JsonArrayBuilder jab = Json.createArrayBuilder();
-        RDFList current = rdfList;
-        while (!current.isEmpty()) {
-            RDFNode node = current.getHead();
-            if (node.isLiteral()) {
-                String type = node.asLiteral().getDatatypeURI();
-                switch (type) {
-                    default -> throw new Error("Unknown datatype : "+type);
-                }
-            }
-            current = current.getTail();
-        }
-        return jab.build();
-    }
-
     public static Literal convertRDFListXYZToWKT(RDFList rdfList) {
         List<Coordinate> coordinates = new ArrayList<>();
         RDFList current = rdfList;
@@ -527,58 +494,45 @@ public class DICOM2RDF {
         return rdfList.getModel().createTypedLiteral(wkt, GEO.NS+"wktLiteral");
     }
 
-    public static String convertRDFListXYToWKT(RDFList rdfList) {
-        List<Coordinate> coordinates = new ArrayList<>();
-        RDFList current = rdfList;
-        while (!current.isEmpty()) {
-            RDFNode firstNode = current.getHead();
-            RDFNode secondNode = current.getTail().getHead();
-            double x = firstNode.asLiteral().getDouble() / 1000.0d;
-            double y = secondNode.asLiteral().getDouble() / 1000.0d;
-            coordinates.add(new Coordinate(x, y));
-            current = current.getTail().getTail();
-        }
-        if (!coordinates.isEmpty() && !coordinates.get(0).equals(coordinates.get(coordinates.size() - 1))) {
-            coordinates.add(coordinates.get(0));
-        }
-        GeometryFactory geometryFactory = new GeometryFactory();
-        LinearRing ring = geometryFactory.createLinearRing(coordinates.toArray(new Coordinate[0]));
-        org.locationtech.jts.geom.Polygon polygon = geometryFactory.createPolygon(ring);
-        WKTWriter wktWriter = new WKTWriter();
-        String wkt = wktWriter.write(polygon);
-        wkt = String.format("<http://www.opengis.net/def/crs/EPSG/0/404000> %s", wkt);
-        return wkt;
-    }    
-    
     public Model OptimizePolygons2WKT(Model m) {
-        // convert Polygons to OGC WKT Literals        
-        m.listSubjectsWithProperty(DCM._30060050)
-            .forEach(r->{
-                String type = r.getRequiredProperty(DCM._30060042).getObject().asLiteral().getString();
+        // convert Polygons to OGC WKT Literals
+        for (Property contourData : tagProperties(0x30060050)) {
+            m.listSubjectsWithProperty(contourData).toList().forEach(r->{
+                String type = null;
+                for (Property geometricType : tagProperties(0x30060042)) {
+                    Statement stmt = r.getProperty(geometricType);
+                    if (stmt != null) {
+                        type = stmt.getObject().asLiteral().getString();
+                        break;
+                    }
+                }
                 switch (type) {
                     case "CLOSED_PLANAR" -> {
-                        RDFList list = m.getList(r.getRequiredProperty(m.createProperty(DCM.NS,"30060050")).getObject().asResource());
-                        r.addLiteral( DCM._30060050, convertRDFListXYZToWKT(list));
+                        RDFList list = m.getList(r.getRequiredProperty(contourData).getObject().asResource());
+                        r.addLiteral(contourData, convertRDFListXYZToWKT(list));
                         removeList(list, m);
-                        m.removeAll(null, DCM._30060050, list);
+                        m.removeAll(null, contourData, list);
                     }
-                    //default -> throw new Error("Unsupported Polygon type : "+type);
+                    case null -> { }
+                    default -> { }
                 }
             });
+        }
         return m;
     }
     
     public Model PadLeftZero8(Model m) {
-        // Pad PatientID with zeros to make minimally 8 characters      
-        m.listSubjectsWithProperty(DCM.patientID)
-            .forEach(r->{
-                String patientID = r.getRequiredProperty(DCM.patientID).getObject().asLiteral().getString();
+        // Pad PatientID with zeros to make minimally 8 characters
+        for (Property patientIDProp : tagProperties(0x00100020)) {
+            m.listSubjectsWithProperty(patientIDProp).toList().forEach(r->{
+                String patientID = r.getRequiredProperty(patientIDProp).getObject().asLiteral().getString();
                 if (patientID.length()<8) {
-                    r.removeAll(DCM.patientID);
+                    r.removeAll(patientIDProp);
                     String PaddedpatientID = Tools.padWithZeros(patientID);
-                    r.addProperty(DCM.patientID, PaddedpatientID);
+                    r.addProperty(patientIDProp, PaddedpatientID);
                 }
             });
+        }
         return m;
     }
     
@@ -641,7 +595,6 @@ public class DICOM2RDF {
     }
     
     public Model PtagTweak(Model m) {
-       // TestME2(m);
         UpdateRequest request = UpdateFactory.create();
         /* see https://github.com/w3c/hcls-fhir-rdf/issues/145
         

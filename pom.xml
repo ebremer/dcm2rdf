@@ -62,27 +62,6 @@
             <version>${dcm4che.ver}</version>
             <exclusions>
                 <exclusion>
-                    <artifactId>org.slf4j</artifactId>
-                    <groupId>slf4j-api</groupId>
-                </exclusion>          
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-json</artifactId>
-            <version>${dcm4che.ver}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-dict</artifactId>
-            <version>${dcm4che.ver}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.dcm4che.tool</groupId>
-            <artifactId>dcm4che-tool-common</artifactId>
-            <version>${dcm4che.ver}</version>
-            <exclusions>
-                <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
                 </exclusion>
@@ -90,14 +69,18 @@
         </dependency>
         <dependency>
             <groupId>org.dcm4che</groupId>
-            <artifactId>dcm4che-deident</artifactId>
+            <artifactId>dcm4che-dict</artifactId>
             <version>${dcm4che.ver}</version>
-            <type>jar</type>
         </dependency>
         <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.5.32</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.28.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+            <version>2.0.17</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>

@@ -9,29 +9,30 @@
 Design philosophy - create a good faith RDF representation of DICOM metadata.
 
 This program will read a specified source directory containing DICOM files and create a matching folder
-with the same folder hierachy as the source and with the same file names but with a RDF turtle ".ttl" extension.
+with the same folder hierarchy as the source and with the same file names but with an RDF extension
+(".ttl" Turtle by default, or ".nt" N-Triples via `-format`, optionally gzipped via `-c`).
 This program's output has been modified to match and implement various discussions that have occurred 
-within a community of people interested working with DICOM using a RDF tool chain.
+within a community of people interested in working with DICOM using a RDF tool chain.
 
-This program is hardly the first of it's kind with several papers written on the subject.
+This program is hardly the first of its kind with several papers written on the subject.
 
-*** Please note - this is a community effort and is not offical, nor part of the [DICOM standard](https://www.dicomstandard.org/)
+*** Please note - this is a community effort and is not official, nor part of the [DICOM standard](https://www.dicomstandard.org/)
 
 ## About this program
-It it a Java program developed using the [GraalVM](https://www.graalvm.org/) which will allow you to run the program as a Java runnable jar
+It is a Java program developed using the [GraalVM](https://www.graalvm.org/) which will allow you to run the program as a Java runnable jar
 or as a native image not requiring a JDK/JRE to be installed.  It is built upon [Apache Jena](https://github.com/apache/jena) and the [DCM4CHE](https://github.com/dcm4che/dcm4che) libraries.
 
 ## Building dcm2rdf jar version
 
 1. Must have working JDK25 environment
 2. `mvn -Pjar clean package`
-3. A runnable jar version "dcm2rdf-1.0.0.jar" will be in the target folder
+3. A runnable jar version "dcm2rdf-1.3.0.jar" will be in the target folder
 
-`java -jar dcm2rdf-1.0.0.jar -help` will display instructions.
+`java -jar dcm2rdf-1.3.0.jar -help` will display instructions.
 
 ## Building platform specific stand-alone
 
-1. Must have at least JDK25 GraalVM CE 25.0.2 installed with fully functional [native-image](https://www.graalvm.org/latest/reference-manual/native-image/) build enviroment for the platform you are building for.
+1. Must have at least JDK25 GraalVM CE 25.0.2 installed with fully functional [native-image](https://www.graalvm.org/latest/reference-manual/native-image/) build environment for the platform you are building for.
 2. mvn -Pnative clean native:compile
 3. Artifact "dcm2rdf" will be in target folder.
 
@@ -40,7 +41,7 @@ or as a native image not requiring a JDK/JRE to be installed.  It is built upon 
 ## Roadmap
 1) A paper documenting the referenced community effort.
 2) More documentation
-3) Support other RDF serializations (only outputs Turtle at the moment)
+3) More RDF serializations (Turtle and N-Triples are supported via `-format`)
 4) Link program output with existing official DICOM RDF terminology.
 5) DICOM SHACL development
 6) and much much more...
@@ -87,7 +88,8 @@ Usage: dcm2rdf [options]
       Calculate SHA256 Hashes. Implied with SHA256 naming option.
       Default: false
     -level
-      Sets logging level (OFF, ALL, WARNING, SEVERE)
+      Sets logging level (OFF, SEVERE, WARNING, INFO, CONFIG, FINE, FINER,
+      FINEST, ALL)
       Default: SEVERE
     -wkt
       Known polygons expressed as GeoSPARQL WKT
@@ -106,11 +108,18 @@ Usage: dcm2rdf [options]
       if ptags is true, add alternate private tag representation
       Default: false
     -includeinlinebinary
-      will empty the inline binaries in the RDF file
+      Include inline binary data in the RDF output (default: emitted as empty
+      base64 literals)
       Default: false
     -keywords
       Use keyword predicates instead of the tag-based
       Default: false
+    -format
+      RDF format type (TTL or NT)
+      Default: TTL
+    -logdir
+      Directory for the run log file (only created if something is logged)
+      Default: .
 ```
 ## References
 - 2009 [Context-Driven Ontological Annotations In DICOM Images - Towards a semantic PACS](https://www.scitepress.org/PublishedPapers/2009/15502/15502.pdf)

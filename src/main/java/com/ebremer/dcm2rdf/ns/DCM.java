@@ -19,7 +19,6 @@ public class DCM {
     public static final Property Value = ResourceFactory.createProperty(NS,"Value");
     public static final Property vr = ResourceFactory.createProperty(NS,"vr");
     public static final Property BulkDataURI = ResourceFactory.createProperty(NS,"BulkDataURI");
-    public static final Property _00081190 = ResourceFactory.createProperty(NS,"00081190");
     public static final Property _30060050 = ResourceFactory.createProperty(NS,"30060050");
     public static final Property _30060042 = ResourceFactory.createProperty(NS,"30060042");
     public static final Property patientID = ResourceFactory.createProperty(NS,"00100020");

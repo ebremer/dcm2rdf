@@ -1,5 +1,6 @@
 package com.ebremer.dcm2rdf;
 
+import com.ebremer.dcm2rdf.utils.LazyFileHandler;
 import com.ebremer.dcm2rdf.utils.RDFFormatter;
 import com.ebremer.dcm2rdf.parameters.Parameters;
 import com.beust.jcommander.JCommander;
@@ -10,14 +11,14 @@ import static com.ebremer.dcm2rdf.RandomUtils.GetMax;
 import static com.ebremer.dcm2rdf.RandomUtils.GetTotal;
 import com.ebremer.dcm2rdf.utils.Statistics;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.logging.ConsoleHandler;
-import java.util.logging.FileHandler;
-import java.util.logging.Level;
+import java.util.logging.Handler;
 import java.util.logging.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -25,8 +26,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public class dcm2rdf {
-    public static final String Version = resolveVersion();
-    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
+    public static final String VERSION = resolveVersion();
 
     private static String resolveVersion() {
         String v = dcm2rdf.class.getPackage().getImplementationVersion();
@@ -34,8 +34,6 @@ public class dcm2rdf {
     }
 
     public static void main(String[] args) {
-        ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger)LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-        root.setLevel(ch.qos.logback.classic.Level.OFF);
         Parameters params = new Parameters();
         JCommander jc = JCommander.newBuilder().addObject(params).build();
         jc.setProgramName("dcm2rdf");
@@ -46,7 +44,7 @@ public class dcm2rdf {
                 return;
             }
             if (a.equals("-version")) {
-                System.out.println("dcm2rdf - Version : " + Version);
+                System.out.println("dcm2rdf - Version : " + VERSION);
                 return;
             }
         }
@@ -58,32 +56,40 @@ public class dcm2rdf {
                     System.out.println("free memory: " + GetFree() + " Total : " + GetTotal() + "  Max: " + GetMax() );
                     System.out.println("Number of cores being used : " + params.threads);
                 }
-                logger.setLevel(Level.WARNING);
-                logger.setUseParentHandlers(false);
+                Logger rootLogger = Logger.getLogger("");
+                for (Handler h : rootLogger.getHandlers()) {
+                    rootLogger.removeHandler(h);
+                }
+                rootLogger.setLevel(params.level);
                 ConsoleHandler consoleHandler = new ConsoleHandler();
-                logger.setLevel(params.level);
-                logger.addHandler(consoleHandler);      
-                FileHandler fileHandler;
+                consoleHandler.setLevel(params.level);
+                rootLogger.addHandler(consoleHandler);
                 try {
-                    fileHandler = new FileHandler(
-                    String.format(
-                        "dcm2rdf-%s.ttl",
-                        Instant.now().atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
-                        ), false);
+                    Path logdir = params.logdir.toPath();
+                    Files.createDirectories(logdir);
+                    // FileHandler patterns use '/' as the separator on all platforms
+                    LazyFileHandler fileHandler = new LazyFileHandler(
+                        logdir.resolve(String.format(
+                            "dcm2rdf-%s.log.ttl",
+                            Instant.now().atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+                        )).toString().replace('\\', '/'));
                     fileHandler.setLevel(params.level);
                     fileHandler.setFormatter(new RDFFormatter());
-                    logger.addHandler(fileHandler);
+                    rootLogger.addHandler(fileHandler);
                     D2R.init();
-                    consoleHandler.setLevel(params.level);
-                    new DirectoryProcessor(params).Protocol(DICOM);
+                    DirectoryProcessor dp = new DirectoryProcessor(params);
+                    dp.Protocol(DICOM);
                     System.out.println(Statistics.getStatistics().getStats());
-                } catch (IOException ex) {
+                    if (dp.getFileCounter().getFailedConversionFileCount() > 0) {
+                        System.exit(2);
+                    }
+                } catch (IOException | SecurityException ex) {
                     System.err.println(ex.getMessage());
-                } catch (SecurityException ex) {
-                    System.err.println(ex.getMessage());
+                    System.exit(1);
                 }
             } else {
-                System.out.println("Source does not exist! "+params.src);
+                System.err.println("Source does not exist! "+params.src);
+                System.exit(1);
             }
         } catch (ParameterException ex) {
             System.out.println(ex.toString());

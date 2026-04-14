@@ -8,13 +8,12 @@ import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DIRECTORY;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.TAR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.UNKNOWN;
 import com.ebremer.dcm2rdf.parameters.Parameters;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.nio.file.StandardCopyOption;
 import java.util.zip.GZIPOutputStream;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.RDFDataMgr;
@@ -49,7 +48,11 @@ public class RandomUtils {
         } else if (r.endsWith(".tar")) {
             return TAR;
         }
-        return UNKNOWN;       
+        int sep = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+        if (file.substring(sep + 1).equals("DICOMDIR")) {
+            return DICOMDIR;
+        }
+        return UNKNOWN;
     }
     
     public static DirectoryProcessor.FileType getFileType(Path file) {
@@ -69,37 +72,38 @@ public class RandomUtils {
     }
     
     public static String StripExtension(String name) {
-        if (name.endsWith(".dcm")) {
-            return name.replace(".dcm", "");
-        }
-        if (name.endsWith(".dat")) {
-            return name.replace(".dat", "");
+        if (name.endsWith(".dcm") || name.endsWith(".dat")) {
+            return name.substring(0, name.length() - 4);
         }
         return name;
     }
 
-    public static void DumpModel(Model m, Path file, Parameters params) {
+    public static void DumpModel(Model m, Path file, Parameters params) throws IOException {
         m.setNsPrefix("xsd", XSD.NS);
         m.setNsPrefix("prov", PROVO.NS);
         m.setNsPrefix("rdf", RDF.uri);
         m.setNsPrefix("geo", GEO.NS);
-        if (!file.getParent().toFile().exists()) {
-            file.getParent().toFile().mkdirs();
+        Path parent = file.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
         }
-        if (params.compress) {
-            try (OutputStream fos = new GZIPOutputStream(new FileOutputStream(file.toFile()))) {
+        // Write to a temp file and move it into place, so a failed run can't leave a
+        // partial output that later runs mistake for a finished conversion
+        Path tmp = file.resolveSibling(file.getFileName().toString() + ".tmp");
+        try {
+            try (OutputStream fos = params.compress
+                    ? new GZIPOutputStream(new FileOutputStream(tmp.toFile()))
+                    : new FileOutputStream(tmp.toFile())) {
                 RDFDataMgr.write(fos, m, params.format.getRDFFormat());
-            } catch (FileNotFoundException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (IOException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
-            } 
-        } else {
-            try (FileOutputStream fos = new FileOutputStream(file.toFile())) {
-                RDFDataMgr.write(fos, m, params.format.getRDFFormat());
-            } catch (IOException ex) {
-                Logger.getLogger(FileProcessor.class.getName()).log(Level.SEVERE, null, ex);
             }
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException | RuntimeException ex) {
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException suppressed) {
+                ex.addSuppressed(suppressed);
+            }
+            throw ex;
         }
     }
 }

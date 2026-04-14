@@ -72,55 +72,81 @@ class ConvertTest {
         assertThrows(NumberFormatException.class, () -> Convert.toTM("25"));
     }
 
-    // ----- toDA (parses DICOM DT-style strings to xsd:dateTime) -----
+    @Test
+    void toTM_rejectsMinutesAndSecondsOutOfRange() {
+        assertThrows(VRFormatException.class, () -> Convert.toTM("1260"));
+        assertThrows(VRFormatException.class, () -> Convert.toTM("125961"));
+    }
 
     @Test
-    void toDA_dateOnly() {
-        Literal l = Convert.toDA("20240115");
+    void toTM_allowsLeapSecond() {
+        assertEquals("12:59:60", Convert.toTM("125960").getLexicalForm());
+    }
+
+    // ----- toXsdDateTime (parses DICOM DA/DT-style strings to xsd:dateTime) -----
+
+    @Test
+    void toXsdDateTime_dateOnly() {
+        Literal l = Convert.toXsdDateTime("20240115");
         assertEquals("2024-01-15T00:00:00", l.getLexicalForm());
         assertEquals(XSDDatatype.XSDdateTime, l.getDatatype());
     }
 
     @Test
-    void toDA_fullDateTime() {
+    void toXsdDateTime_fullDateTime() {
         assertEquals("2024-01-15T12:30:45",
-            Convert.toDA("20240115123045").getLexicalForm());
+            Convert.toXsdDateTime("20240115123045").getLexicalForm());
     }
 
     @Test
-    void toDA_handlesZeroedPlaceholderString() {
+    void toXsdDateTime_handlesZeroedPlaceholderString() {
         assertEquals("0001-01-01T00:00:00",
-            Convert.toDA("0000-00-00T00:00:00").getLexicalForm());
+            Convert.toXsdDateTime("0000-00-00T00:00:00").getLexicalForm());
     }
 
     @Test
-    void toDA_promotesYearZero() {
+    void toXsdDateTime_promotesYearZero() {
         assertEquals("0001-01-01T00:00:00",
-            Convert.toDA("00000000").getLexicalForm());
+            Convert.toXsdDateTime("00000000").getLexicalForm());
     }
 
     @Test
-    void toDA_rejectsGarbage() {
-        assertThrows(VRFormatException.class, () -> Convert.toDA("not-a-date"));
+    void toXsdDateTime_rejectsGarbage() {
+        assertThrows(VRFormatException.class, () -> Convert.toXsdDateTime("not-a-date"));
     }
 
-    // ----- toDT (strict YYYYMMDD -> xsd:date) -----
+    @Test
+    void toXsdDateTime_acceptsButDropsFractionAndOffset() {
+        assertEquals("2024-01-15T12:30:45",
+            Convert.toXsdDateTime("20240115123045.123456+0500").getLexicalForm());
+    }
+
+    // ----- toXsdDate (strict YYYYMMDD -> xsd:date) -----
 
     @Test
-    void toDT_valid() {
-        Literal l = Convert.toDT("20240115");
+    void toXsdDate_valid() {
+        Literal l = Convert.toXsdDate("20240115");
         assertEquals("2024-01-15", l.getLexicalForm());
         assertEquals(XSDDatatype.XSDdate, l.getDatatype());
     }
 
     @Test
-    void toDT_rejectsWrongLength() {
-        assertThrows(VRFormatException.class, () -> Convert.toDT("202401"));
+    void toXsdDate_rejectsWrongLength() {
+        assertThrows(VRFormatException.class, () -> Convert.toXsdDate("202401"));
     }
 
     @Test
-    void toDT_rejectsInvalidMonth() {
-        assertThrows(VRFormatException.class, () -> Convert.toDT("20241315"));
+    void toXsdDate_rejectsInvalidMonth() {
+        assertThrows(VRFormatException.class, () -> Convert.toXsdDate("20241315"));
+    }
+
+    // ----- deprecated aliases (kept for API compatibility) -----
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void deprecatedNamesDelegateToTheRenamedParsers() {
+        assertEquals("2024-01-15T00:00:00", Convert.toDA("20240115").getLexicalForm());
+        assertEquals("2024-01-15", Convert.toDT("20240115").getLexicalForm());
     }
 
     // ----- toDS -----
@@ -153,6 +179,13 @@ class ConvertTest {
     @Test
     void toDS_rejectsEmpty() {
         assertThrows(NumberFormatException.class, () -> Convert.toDS(""));
+        assertThrows(NumberFormatException.class, () -> Convert.toDS("   "));
+    }
+
+    @Test
+    void toDS_rejectsDigitlessInput() {
+        assertThrows(VRFormatException.class, () -> Convert.toDS("."));
+        assertThrows(VRFormatException.class, () -> Convert.toDS("+"));
     }
 
     @Test

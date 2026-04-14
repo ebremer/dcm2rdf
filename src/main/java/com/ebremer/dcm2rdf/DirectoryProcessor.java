@@ -8,15 +8,14 @@ import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOM;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.DICOMDIR;
 import static com.ebremer.dcm2rdf.DirectoryProcessor.FileType.TAR;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.EnumSet;
-import java.util.Objects;
-import java.util.Set;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -29,7 +28,6 @@ import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 
 /**
  *
@@ -37,7 +35,6 @@ import org.apache.jena.rdf.model.ModelFactory;
  */
 public class DirectoryProcessor {
     public enum FileType {DIRECTORY, DICOMDIR, DICOM, TAR, UNKNOWN};
-    public Model buffer = ModelFactory.createDefaultModel();
     private final Parameters params;
     private final FileCounter fc;
     private final ProgressBar progressBar;
@@ -64,65 +61,64 @@ public class DirectoryProcessor {
         this.params = params;
     }
     
-    public synchronized void AddModel(Model m) {
-        buffer.add(m);
+    public FileCounter getFileCounter() {
+        return fc;
     }
 
-    public void Traverse(Parameters params, Set<FileType> allowedfiletypes, FileType ftype) {
+    public void Traverse(Parameters params) {
         try (ThreadPoolExecutor engine = new ThreadPoolExecutor(params.threads, params.threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
             engine.prestartAllCoreThreads();
-            Files.walk(params.src.toPath())                        
-                .parallel()
-                .filter(Objects::nonNull)
-                .filter(p->{
-                    if (p.toFile().isDirectory()) {
-                        if (params.status) fc.incrementDirectoryCount();
-                        return false;
-                    }
-                    return true;
-                })
-                .filter(p->{
+            Files.walkFileTree(params.src.toPath(), new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (params.status) fc.incrementDirectoryCount();
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path p, BasicFileAttributes attrs) {
                     FileType ft = RandomUtils.getFileType(p);
                     switch (ft) {
-                        case FileType.DIRECTORY -> {
-                            if (params.status) fc.incrementDirectoryCount();
-                            return false;
-                        }
-                        case FileType.DICOM -> {
+                        case DICOM, DICOMDIR -> {
                             if (params.status) fc.incrementDicomFileCount();
-                            return true;
                         }
-                        case FileType.DICOMDIR -> {
-                            if (params.status) fc.incrementDicomFileCount();
-                            return true;
-                        }
-                        case FileType.TAR -> {
+                        case TAR -> {
                             if (params.status) fc.incrementTarFileCount();
-                            return true;
                         }
                         default -> {
                             if (params.status) fc.incrementOtherFileCount();
-                            return false;                            
+                            return FileVisitResult.CONTINUE;
                         }
                     }
-                })
-                .filter(p->{
-                    if (p.toFile().length()>0) {
-                        return true;
+                    if (attrs.size() == 0) {
+                        logger.log(Level.SEVERE, "Zero Length File {0}", p);
+                        Statistics.getStatistics().AddFile(0, 1);
+                        if (params.status) fc.incrementZeroLengthFileCount();
+                        return FileVisitResult.CONTINUE;
                     }
-                    logger.log(Level.SEVERE, "Zero Length File", p);
-                    Statistics.getStatistics().AddFile(0, 1);
-                    if (params.status) fc.incrementZeroLengthFileCount();
-                    return false;                
-                })
-                .forEach(p->{
-                    FileType ft = RandomUtils.getFileType(p);
                     if (params.status) {
                         progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
                         progressBar.stepTo(engine.getCompletedTaskCount());
                     }
                     engine.submit(new FileProcessor(params,fc,ft,p));
-                });
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path p, IOException exc) {
+                    // an unreadable file or directory must not abort the rest of the traversal
+                    logger.log(Level.SEVERE, String.format("Cannot access %s : %s", p, exc));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    if (exc != null) {
+                        logger.log(Level.SEVERE, String.format("Error reading directory %s : %s", dir, exc));
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
             engine.shutdown();
             try {
                 while (!engine.awaitTermination(1, TimeUnit.SECONDS)) {
@@ -136,7 +132,7 @@ public class DirectoryProcessor {
                 logger.severe(ex.getMessage());
             }
         } catch (IOException ex) {
-            Logger.getLogger(DirectoryProcessor.class.getName()).log(Level.SEVERE, null, ex);
+            logger.log(Level.SEVERE, String.format("Traversal of %s failed : %s", params.src, ex), ex);
         }
         if (params.status) {
             System.out.println("\n"+fc);
@@ -144,8 +140,7 @@ public class DirectoryProcessor {
     }
     
     public void Protocol(FileType ftype) {
-        Set<FileType> subset = EnumSet.of(FileType.DICOM, FileType.TAR);
-        Traverse(params, subset, ftype);
+        Traverse(params);
     }
 }
 
@@ -185,64 +180,59 @@ class FileProcessor implements Callable<Model> {
             if (params.ptags) {
                 m = d2r.PtagTweak(m);
             }
-            if (params.sbu) {
+            if (params.sbu || params.padleftzero) {
                 d2r.PadLeftZero8(m);
             }
         }
         return m;
     }
 
-    private void ProcessTar(TarArchiveInputStream tarInput, Path root) throws IOException {
+    private void ProcessTar(TarArchiveInputStream tarInput, Path root, String srcRoot) throws IOException {
         TarArchiveEntry ce = tarInput.getNextEntry();
-        boolean nohalt = true;       
         while (ce != null) {
             if (ce.isDirectory()) {
                 if (params.status) fc.incrementTarDirectoryCount();
             } else {
                 if (ce.getSize()==0) {
                     if (params.status) fc.incrementZeroLengthFileCount();
-                    logger.log(Level.SEVERE, "Zero Length File", Path.of(root.toString(), ce.getName()));
+                    logger.log(Level.SEVERE, "Zero Length File {0}", Path.of(root.toString(), ce.getName()));
                 } else {
                     FileType tft = RandomUtils.getFileType(ce.getName());
                     switch(tft) {
-                        case DICOM -> {
+                        case DICOM, DICOMDIR -> {
                             if (params.status) fc.incrementTarDicomFileCount();
-                            if (ProcessDICOM(params, "", root.toString()+"#"+ ce.getName(), tarInput)==STAT.ALREADYDONE) {
-                                nohalt = false;
-                            }
-                        }
-                        case DICOMDIR -> {
-                            if (params.status) fc.incrementTarDicomFileCount();
-                            ProcessDICOM(params, "", root.toString()+"#"+ce.getName(), tarInput);
+                            String tdest = RandomUtils.StripExtension(root.toString()+"#"+ce.getName())
+                                +(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension());
+                            ProcessDICOM(params, srcRoot+"#"+ce.getName(), tdest, tarInput);
                         }
                         case TAR -> {
-                            if (params.status) fc.incrementTarFileCount();
-                            ProcessTar(tarInput, Path.of(root.toString(), ce.getName()));
+                            if (params.status) fc.incrementTarTarFileCount();
+                            // The nested archive is the current entry's payload: wrap it in its own tar stream.
+                            // Left unclosed on purpose - closing it would close the outer stream.
+                            ProcessTar(new TarArchiveInputStream(tarInput), Path.of(root.toString(), ce.getName()), srcRoot+"#"+ce.getName());
                         }
                         default -> fc.incrementTarOtherFileCount();
                     }
-                }                
+                }
             }
-            ce = nohalt?tarInput.getNextEntry():null;
+            ce = tarInput.getNextEntry();
         }
     }
     
-    private STAT ProcessDICOM(Parameters params, String src, String fdest, InputStream is) {        
-        //Path dest = Paths.get(RandomUtils.StripExtension(fdest)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
+    private STAT ProcessDICOM(Parameters params, String src, String fdest, InputStream is) throws IOException {
         Path dest = Paths.get(fdest);
         if ( !dest.toFile().exists() || params.overwrite ) {
             Model m = ScanMeta(params, src, is);
             if (params.cdt) {
                 m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
             }
-            if (dest.toFile().exists()) {
-                dest.toFile().delete();
-            }
-            if ((m!=null)&&(m.size()!=0)) {                                
+            if ((m!=null)&&(m.size()!=0)) {
                 RandomUtils.DumpModel(m,dest,params);
             }
-            if (!file.toFile().exists()) {
-                System.out.println("Failed to create : "+file);
+            if (!dest.toFile().exists()) {
+                logger.log(Level.SEVERE, "Failed to create : {0}", dest);
+                fc.incrementFailedConversionFileCount();
+                return STAT.FAILED;
             }
         } else {
             return STAT.ALREADYDONE;
@@ -252,43 +242,39 @@ class FileProcessor implements Callable<Model> {
 
     @Override
     public Model call() {
-        String frag = Path.of(params.dest.toString(), params.src.toPath().relativize(file).toString()).toString();
-        switch (ft) {
-            case DICOM -> {
-                try (FileInputStream fis = new FileInputStream(file.toFile())) {
-                    Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
-                    if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, file.toString(), xdest.toString(), fis);
+        try {
+            String frag = Path.of(params.dest.toString(), params.src.toPath().relativize(file).toString()).toString();
+            switch (ft) {
+                case DICOM -> {
+                    try (FileInputStream fis = new FileInputStream(file.toFile())) {
+                        Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
+                        if (!xdest.toFile().exists() || params.overwrite) {
+                            ProcessDICOM(params, file.toString(), xdest.toString(), fis);
+                        }
                     }
-                } catch (FileNotFoundException ex) {
-                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
-                } catch (IOException ex) {
-                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
                 }
-            }
-            case DICOMDIR -> {
-                try (FileInputStream fis = new FileInputStream(file.toFile())) {
-                    Path xdest = Paths.get(frag+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
-                    if (!xdest.toFile().exists() || params.overwrite) {
-                        ProcessDICOM(params, "", frag, fis);
+                case DICOMDIR -> {
+                    try (FileInputStream fis = new FileInputStream(file.toFile())) {
+                        Path xdest = Paths.get(frag+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
+                        if (!xdest.toFile().exists() || params.overwrite) {
+                            ProcessDICOM(params, file.toString(), xdest.toString(), fis);
+                        }
                     }
-                } catch (FileNotFoundException ex) {
-                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
-                } catch (IOException ex) {
-                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
+                }
+                case TAR -> {
+                    try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(file.toFile()))) {
+                        ProcessTar(tarInput, Path.of(frag), file.toString());
+                    }
+                }
+                default -> {
+                    logger.log(Level.SEVERE, "Converting FAIL : {0}", file);
+                    fc.incrementFailedConversionFileCount();
                 }
             }
-            case TAR -> {         
-                try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(file.toFile()))) {
-                    ProcessTar(tarInput, Path.of(frag));
-                } catch (IOException ex) {
-                    logger.severe(String.format("%s ---> %s", ex.getMessage(), file.toFile().toString()));
-                }
-            }
-            default -> {
-                logger.log(Level.SEVERE, "Converting FAIL : {0}", file);
-                fc.incrementFailedConversionFileCount();
-            }
+        } catch (Throwable t) {
+            // Nothing reads the Future returned by submit(), so anything thrown here would vanish silently
+            logger.log(Level.SEVERE, String.format("Conversion failed : %s ---> %s", t, file), t);
+            fc.incrementFailedConversionFileCount();
         }
         return null;
     }
