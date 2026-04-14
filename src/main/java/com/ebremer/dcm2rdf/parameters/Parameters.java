@@ -101,7 +101,7 @@ public class Parameters {
     @Parameter(names = {"-ptags"}, description = "if ptags is true, add alternate private tag representation", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 19)
     public Boolean ptags = false; 
 
-    @Parameter(names = {"-includeinlinebinary"}, description = "will empty the inline binaries in the RDF file", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 20)
+    @Parameter(names = {"-includeinlinebinary"}, description = "Include inline binary data in the RDF output (default: emitted as empty base64 literals)", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 20)
     public Boolean includeinlinebinary = false; 
     
     @Parameter(names = {"-keywords"}, description = "Use keyword predicates instead of the tag-based", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 21)

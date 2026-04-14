@@ -124,16 +124,16 @@ public class DirectoryProcessor {
                     engine.submit(new FileProcessor(params,fc,ft,p));
                 });
             engine.shutdown();
-            while (!engine.isTerminated()) {
-                if (params.status) {
-                    progressBar.stepTo(engine.getCompletedTaskCount());
-                    progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
-                }                
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ex) {
-                    logger.severe(ex.getMessage());
+            try {
+                while (!engine.awaitTermination(1, TimeUnit.SECONDS)) {
+                    if (params.status) {
+                        progressBar.stepTo(engine.getCompletedTaskCount());
+                        progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
+                    }
                 }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                logger.severe(ex.getMessage());
             }
         } catch (IOException ex) {
             Logger.getLogger(DirectoryProcessor.class.getName()).log(Level.SEVERE, null, ex);

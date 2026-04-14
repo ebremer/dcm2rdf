@@ -501,7 +501,7 @@ public class DICOM2RDF {
         while (!current.isEmpty()) {
             RDFNode firstNode = current.getHead();
             RDFNode secondNode = current.getTail().getHead();
-            RDFNode thirdNode = current.getTail().getHead();
+            RDFNode thirdNode = current.getTail().getTail().getHead();
             double x = firstNode.asLiteral().getDouble() / 1000.0d;
             double y = secondNode.asLiteral().getDouble() / 1000.0d;
             double z = thirdNode.asLiteral().getDouble() / 1000.0d;

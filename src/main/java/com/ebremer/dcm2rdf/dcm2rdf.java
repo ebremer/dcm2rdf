@@ -24,23 +24,34 @@ import org.slf4j.LoggerFactory;
  * @author erich
  */
 
-public class dcm2rdf {    
-    public static String Version = "1.2.0";
+public class dcm2rdf {
+    public static final String Version = resolveVersion();
     private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
+
+    private static String resolveVersion() {
+        String v = dcm2rdf.class.getPackage().getImplementationVersion();
+        return v != null ? v : "unknown";
+    }
 
     public static void main(String[] args) {
         ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger)LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-        root.setLevel(ch.qos.logback.classic.Level.OFF);                
+        root.setLevel(ch.qos.logback.classic.Level.OFF);
         Parameters params = new Parameters();
         JCommander jc = JCommander.newBuilder().addObject(params).build();
-        jc.setProgramName("dcm2rdf");    
-        try {
-            jc.parse(args);
-            if (params.help) {
+        jc.setProgramName("dcm2rdf");
+        for (String a : args) {
+            if (a.equals("-help") || a.equals("-h")) {
                 jc.usage();
                 System.out.println("Use -Xmx to set maximum memory.  For example, '-Xmx30G' will set maximum at 30G");
-                System.exit(0);
+                return;
             }
+            if (a.equals("-version")) {
+                System.out.println("dcm2rdf - Version : " + Version);
+                return;
+            }
+        }
+        try {
+            jc.parse(args);
             if (params.src.exists()) {
                 if (params.status) {
                     System.out.println("Available # of cores : "+Runtime.getRuntime().availableProcessors());
@@ -76,11 +87,8 @@ public class dcm2rdf {
             }
         } catch (ParameterException ex) {
             System.out.println(ex.toString());
-            if (params.version) {
-                System.out.println("dcm2rdf - Version : "+Version);
-            } else {
-                jc.usage();
-            }
+            jc.usage();
+            System.exit(1);
         }
     }   
 }

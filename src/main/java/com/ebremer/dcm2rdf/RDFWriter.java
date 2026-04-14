@@ -144,7 +144,6 @@ public class RDFWriter implements DicomInputHandler {
             writeValue(value1, attrs.bigEndian(), false);
         else
             writeValue(vr, value, attrs.bigEndian(), attrs.getSpecificCharacterSet(vr), true, false);
-        throw new Error("ACK!!!");
     }
 
     private void writeValue(Value value, boolean bigEndian, boolean single) {
@@ -177,7 +176,7 @@ public class RDFWriter implements DicomInputHandler {
                 stack.pop().addProperty(at.name(), m.createList(at.array().iterator()));
             }
             case BulkData bulkData -> writeBulkData(bulkData);
-            default -> throw new Error("ACK!!!");
+            default -> throw new IllegalStateException("Unhandled Value subtype: " + value.getClass().getName());
         }
     }
 
@@ -250,8 +249,8 @@ public class RDFWriter implements DicomInputHandler {
             case FL -> writeFloatValues(vr, val, bigEndian, single);
             case FD -> writeDoubleValues(vr, val, bigEndian, single);
             case SL, SS, US -> writeIntValues(vr, val, bigEndian, single);
-            case SV -> writeLongValues(Long::toString, vr, val, bigEndian);
-            case UV -> writeLongValues(Long::toUnsignedString, vr, val, bigEndian);
+            case SV -> writeLongValues(Long::toString, vr, val, bigEndian, single);
+            case UV -> writeLongValues(Long::toUnsignedString, vr, val, bigEndian, single);
             case UL -> writeUIntValues(vr, val, bigEndian, single);
             case OB, OD, OF, OL, OV, OW, UN -> writeInlineBinary(vr, (byte[]) val, bigEndian, preserve);
             case SQ -> {
@@ -409,16 +408,18 @@ public class RDFWriter implements DicomInputHandler {
         }
     }
 
-    private void writeLongValues(LongFunction<String> toString, VR vr, Object val, boolean bigEndian) {
-        boolean asString = true;
+    private void writeLongValues(LongFunction<String> toString, VR vr, Object val, boolean bigEndian, boolean single) {
+        arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             long l = vr.toLong(val, bigEndian, i, 0);
-            if (asString || (l < 0 ? (vr == VR.UV || (-l >> DOUBLE_MAX_BITS) > 0) : (l >> DOUBLE_MAX_BITS) > 0)) {
-                throw new Error("ACK!!!");
-            } else {
-                arrays.peek().array().add(m.createTypedLiteral(l,XSDDatatype.XSDlong));
-            }
+            arrays.peek().array().add(m.createTypedLiteral(toString.apply(l), XSDDatatype.XSDinteger));
+        }
+        ArrayType at = arrays.pop();
+        if (single) {
+            stack.peek().addProperty(at.name(), at.array().iterator().next());
+        } else {
+            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
         }
     }
 
@@ -485,15 +486,15 @@ public class RDFWriter implements DicomInputHandler {
         if (len == 0)
             arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
         else {
-            stack.push(m.createResource());
+            Resource item = m.createResource();
+            arrays.peek().array().add(item);
+            stack.push(item);
             if (dis.isIncludeBulkDataURI()) {
                 writeBulkData(dis.createBulkData(dis));
             } else {
-                writeInlineBinary(frags.vr(), dis.readValue(), 
-                dis.bigEndian(), false);
+                writeInlineBinary(frags.vr(), dis.readValue(), dis.bigEndian(), false);
             }
             stack.pop();
-            throw new Error("ACK!!!");
         }
     }
 
