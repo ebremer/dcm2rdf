@@ -23,7 +23,7 @@ or as a native image not requiring a JDK/JRE to be installed.  It is built upon 
 
 ## Building dcm2rdf jar version
 
-1. Must have working JDK21 environment
+1. Must have working JDK25 environment
 2. `mvn -Pjar clean package`
 3. A runnable jar version "dcm2rdf-1.0.0.jar" will be in the target folder
 
@@ -31,7 +31,7 @@ or as a native image not requiring a JDK/JRE to be installed.  It is built upon 
 
 ## Building platform specific stand-alone
 
-1. Must have at least JDK23 GraalVM CE 23.0.1+11.1 installed with fully functional [native-image](https://www.graalvm.org/latest/reference-manual/native-image/) build enviroment for the platform you are building for.
+1. Must have at least JDK25 GraalVM CE 25.0.2 installed with fully functional [native-image](https://www.graalvm.org/latest/reference-manual/native-image/) build enviroment for the platform you are building for.
 2. mvn -Pnative clean native:compile
 3. Artifact "dcm2rdf" will be in target folder.
 
