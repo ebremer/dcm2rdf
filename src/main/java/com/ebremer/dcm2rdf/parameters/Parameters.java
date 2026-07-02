@@ -3,12 +3,44 @@ package com.ebremer.dcm2rdf.parameters;
 import com.beust.jcommander.Parameter;
 import java.io.File;
 import java.util.logging.Level;
+import org.apache.jena.riot.RDFFormat;
 
 /**
  *
  * @author erich
  */
 public class Parameters {  
+    
+    public enum RdfFormat {
+        TTL("ttl", RDFFormat.TURTLE_PRETTY),
+        NT("nt", RDFFormat.NTRIPLES);
+        private final String extension;
+        private final RDFFormat format;
+
+        RdfFormat(String extension, RDFFormat format) {
+            this.extension = extension;
+            this.format = format;
+        }
+
+        public String getExtension() {
+            return this.extension;
+        }
+
+        public RDFFormat getRDFFormat() {
+            return this.format;
+        }        
+        
+    }
+    
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Compress : ").append(compress).append("\n");
+        sb.append("Format   : ").append(format).append("\n");
+        //sb.append("Compress : "+compress).append("\n");
+        return sb.toString();
+    }
+    
     @Parameter(names = {"-src"}, converter = FileConverter.class, description = "Source Folder or File", required = true, validateWith = Dcm2RdfValidator.class, order = 0)
     public File src;
 
@@ -39,7 +71,7 @@ public class Parameters {
     @Parameter(names = {"-extra"}, description = "Add source file URI, file size", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 9)
     public Boolean extra = false;
     
-    @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = false, validateWith = Dcm2RdfValidator.class, order = 10)
+    @Parameter(names = {"-naming"}, description = "Subject method (SOPInstanceUID, SHA256)", required = false, converter = NamingConverter.class, validateWith = Dcm2RdfValidator.class, order = 10)
     public String naming = "SOPInstanceUID";
    
     @Parameter(names = {"-oid"}, description = "Convert UI VRs to urn:oid:<oid>", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 11)
@@ -48,8 +80,8 @@ public class Parameters {
     @Parameter(names = {"-hash"}, description = "Calculate SHA256 Hashes. Implied with SHA256 naming option.", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 12)
     public Boolean hash = false;
 
-    @Parameter(names = {"-level"}, converter = LogLevelConverter.class, description = "Sets logging level (OFF, ALL, WARNING, SEVERE)", order = 13)
-    public Level level = Level.SEVERE;  
+    @Parameter(names = {"-level"}, converter = LogLevelConverter.class, description = "Sets logging level (OFF, SEVERE, WARNING, INFO, CONFIG, FINE, FINER, FINEST, ALL)", order = 13)
+    public Level level = Level.SEVERE;
 
     @Parameter(names = {"-wkt"}, description = "Known polygons expressed as GeoSPARQL WKT", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, order = 14)
     public Boolean wkt = false;
@@ -64,17 +96,23 @@ public class Parameters {
     public Boolean cdt = false;
 
     @Parameter(names = {"-cdtlevel"}, description = "if cdt is true, only do mapping if list length is greater than this value", validateWith = Dcm2RdfValidator.class, hidden = false, order = 18)
-    public int cdtlevel = 4;    
+    public Integer cdtlevel = 4;    
     
-    @Parameter(names = {"-ptags"}, description = "if ptags is true, add alternate private tag representation", validateWith = Dcm2RdfValidator.class, hidden = false, order = 19)
-    public boolean ptags = false; 
+    @Parameter(names = {"-ptags"}, description = "if ptags is true, add alternate private tag representation", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 19)
+    public Boolean ptags = false; 
 
-    @Parameter(names = {"-includeinlinebinary"}, description = "will empty the inline binaries in the RDF file", validateWith = Dcm2RdfValidator.class, hidden = false, order = 20)
-    public boolean includeinlinebinary = false; 
+    @Parameter(names = {"-includeinlinebinary"}, description = "Include inline binary data in the RDF output (default: emitted as empty base64 literals)", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 20)
+    public Boolean includeinlinebinary = false; 
     
-    @Parameter(names = {"-keywords"}, description = "Use keyword predicates instead of the tag-based", validateWith = Dcm2RdfValidator.class, hidden = false, order = 21)
-    public boolean keywords = false; 
-    
-    @Parameter(names = {"-sbu"}, description = "if sbu is true, add SBU-specific tweaks", validateWith = Dcm2RdfValidator.class, hidden = true, order = 22)
-    public boolean sbu = false; 
+    @Parameter(names = {"-keywords"}, description = "Use keyword predicates instead of the tag-based", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = false, order = 21)
+    public Boolean keywords = false; 
+
+    @Parameter(names = {"-format"}, description = "RDF format type (TTL or NT)", validateWith = Dcm2RdfValidator.class, hidden = false, order = 22)
+    public RdfFormat format = RdfFormat.TTL;
+
+    @Parameter(names = {"-sbu"}, description = "if sbu is true, add SBU-specific tweaks", converter = BooleanConverter.class, validateWith = Dcm2RdfValidator.class, hidden = true, order = 23)
+    public Boolean sbu = false;
+
+    @Parameter(names = {"-logdir"}, converter = FileConverter.class, description = "Directory for the run log file (only created if something is logged)", validateWith = Dcm2RdfValidator.class, order = 24)
+    public File logdir = new File(".");
 }

@@ -103,23 +103,15 @@ public class RDFWriter implements DicomInputHandler {
     }
 
     public RDFWriter(Path file, Resource root, Parameters params) {
-        this.src = null;
+        // no separate source path in this form; use the file so log messages stay meaningful
+        this.src = file;
         this.file = file;
         this.root = root;
         this.m = root.getModel();
         this.stack.push(root);
         this.params = params;
     }
-   
-    public RDFWriter(Resource root, Parameters params) {
-        this.src = null;
-        this.file = null;
-        this.root = root;
-        this.m = root.getModel();
-        this.stack.push(root);
-        this.params = params;
-    }
-    
+
     public String getReplaceBulkDataURI() {
         return replaceBulkDataURI;
     }
@@ -146,17 +138,16 @@ public class RDFWriter implements DicomInputHandler {
         }
     }
 
-    private void writeAttribute(int tag, VR vr, Object value, SpecificCharacterSet cs, Attributes attrs) {        
+    private void writeAttribute(int tag, VR vr, Object value, SpecificCharacterSet cs, Attributes attrs) {
         if (TagUtils.isGroupLength(tag))
-            return;        
+            return;
         if (value instanceof Value value1)
-            writeValue(value1, attrs.bigEndian(), false);
+            writeValue(value1, attrs.bigEndian());
         else
-            writeValue(vr, value, attrs.bigEndian(), attrs.getSpecificCharacterSet(vr), true, false);
-        throw new Error("ACK!!!");
+            writeValue(vr, value, attrs.bigEndian(), attrs.getSpecificCharacterSet(vr), true);
     }
 
-    private void writeValue(Value value, boolean bigEndian, boolean single) {
+    private void writeValue(Value value, boolean bigEndian) {
         if (value.isEmpty())
             return;
         switch (value) {
@@ -186,7 +177,7 @@ public class RDFWriter implements DicomInputHandler {
                 stack.pop().addProperty(at.name(), m.createList(at.array().iterator()));
             }
             case BulkData bulkData -> writeBulkData(bulkData);
-            default -> throw new Error("ACK!!!");
+            default -> throw new IllegalStateException("Unhandled Value subtype: " + value.getClass().getName());
         }
     }
 
@@ -195,7 +186,6 @@ public class RDFWriter implements DicomInputHandler {
         int tag = dis.tag();
         VR vr = dis.vr();
         long len = dis.unsignedLength();
-        boolean single = false;
         if (TagUtils.isGroupLength(tag)) {
             dis.readValue(dis, attrs);
         } else if (dis.isExcludeBulkData()) {
@@ -208,15 +198,13 @@ public class RDFWriter implements DicomInputHandler {
             Property prop;
             if (params.keywords) {
                 String privateCreator = attrs.getPrivateCreator(tag);
-                if (privateCreator==null) {
-                    String keyword = ElementDictionary.keywordOf(tag, privateCreator);
-                    if (keyword.equals("PrivateCreatorID")) {
-                        prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
-                    } else {
-                        prop = m.createProperty(DCM.NS, keyword);
-                    }
-                } else {
+                String keyword = (privateCreator == null) ? ElementDictionary.keywordOf(tag, null) : null;
+                // Private, unknown (dictionary returns ""), and private-creator tags keep the hex
+                // form - an empty keyword would collapse them all onto the bare namespace URI
+                if (keyword == null || keyword.isEmpty() || keyword.equals("PrivateCreatorID")) {
                     prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
+                } else {
+                    prop = m.createProperty(DCM.NS, keyword);
                 }
             } else {
                 prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
@@ -238,7 +226,7 @@ public class RDFWriter implements DicomInputHandler {
                     byte[] b = dis.readValue();
                     if (tag == Tag.TransferSyntaxUID || tag == Tag.SpecificCharacterSet || tag == Tag.PixelRepresentation || TagUtils.isPrivateCreator(tag))
                         attrs.setBytes(tag, vr, b);
-                    writeValue(vr, b, dis.bigEndian(), attrs.getSpecificCharacterSet(vr), false, single);
+                    writeValue(vr, b, dis.bigEndian(), attrs.getSpecificCharacterSet(vr), false);
                  }
             } else {
                 //System.out.println("NO VALUE : "+TagUtils.toHexString(tag)+"  "+vr.name());
@@ -253,15 +241,15 @@ public class RDFWriter implements DicomInputHandler {
         RDFDataMgr.write(System.out, m, Lang.TURTLE);
     }
 
-    private void writeValue(VR vr, Object val, boolean bigEndian, SpecificCharacterSet cs, boolean preserve, boolean single) {        
+    private void writeValue(VR vr, Object val, boolean bigEndian, SpecificCharacterSet cs, boolean preserve) {
         switch (vr) {
-            case AE, AS, AT, CS, DA, DS, DT, IS, LO, LT, PN, SH, ST, TM, UC, UI, UR, UT -> writeStringValues(vr, val, bigEndian, cs, single);
-            case FL -> writeFloatValues(vr, val, bigEndian, single);
-            case FD -> writeDoubleValues(vr, val, bigEndian, single);
-            case SL, SS, US -> writeIntValues(vr, val, bigEndian, single);
+            case AE, AS, AT, CS, DA, DS, DT, IS, LO, LT, PN, SH, ST, TM, UC, UI, UR, UT -> writeStringValues(vr, val, bigEndian, cs);
+            case FL -> writeFloatValues(vr, val, bigEndian);
+            case FD -> writeDoubleValues(vr, val, bigEndian);
+            case SL, SS, US -> writeIntValues(vr, val, bigEndian);
             case SV -> writeLongValues(Long::toString, vr, val, bigEndian);
             case UV -> writeLongValues(Long::toUnsignedString, vr, val, bigEndian);
-            case UL -> writeUIntValues(vr, val, bigEndian, single);
+            case UL -> writeUIntValues(vr, val, bigEndian);
             case OB, OD, OF, OL, OV, OW, UN -> writeInlineBinary(vr, (byte[]) val, bigEndian, preserve);
             case SQ -> {
                 assert true;
@@ -269,7 +257,7 @@ public class RDFWriter implements DicomInputHandler {
         }
     }
 
-    private void writeStringValues(VR vr, Object val, boolean bigEndian, SpecificCharacterSet cs, boolean single) {
+    private void writeStringValues(VR vr, Object val, boolean bigEndian, SpecificCharacterSet cs) {
         arrays.push(new ArrayType(Value, new ArrayList<>()));
         Object o = vr.toStrings(val, bigEndian, cs);
         String[] ss = (o instanceof String[]) ? (String[]) o : new String[]{ (String) o };        
@@ -279,7 +267,7 @@ public class RDFWriter implements DicomInputHandler {
             } else {
                 try {
                     switch (vr) {
-                        case DA -> arrays.peek().array().add(Convert.toDA(s));
+                        case DA, DT -> arrays.peek().array().add(Convert.toXsdDateTime(s));
                         case DS -> {
                             try {
                                 arrays.peek().array().add(Convert.toDS(s));
@@ -328,82 +316,66 @@ public class RDFWriter implements DicomInputHandler {
             }
         }
         ArrayType at = arrays.pop();
-        if (single) {
-            stack.peek().addProperty(at.name(), at.array().iterator().next());
-        } else {
-            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
-        }
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
     }
 
-    private void writeFloatValues(VR vr, Object val, boolean bigEndian, boolean single) {
+    private void writeFloatValues(VR vr, Object val, boolean bigEndian) {
         arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             float d = vr.toFloat(val, bigEndian, i, 0);
             if (Float.isNaN(d)) {
-                logger.log(Level.INFO, "encode {0} NaN as null", new Object[] {vr, file});
+                logger.log(Level.INFO, "encode {0} NaN as null -> {1}", new Object[] {vr, file});
                 arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
             } else {
                 if (d == Float.POSITIVE_INFINITY) {
                     d = Float.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} Infinity as {1}", new Object[] {vr, d, file});
+                    logger.log(Level.WARNING, "encode {0} Infinity as {1} -> {2}", new Object[] {vr, d, file});
                 } else if (d == Float.NEGATIVE_INFINITY) {
                     d = -Float.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} -Infinity as {1}", new Object[] {vr, d, file});
+                    logger.log(Level.WARNING, "encode {0} -Infinity as {1} -> {2}", new Object[] {vr, d, file});
                 }
                 arrays.peek().array().add(m.createTypedLiteral(d,XSDDatatype.XSDfloat));
             }
         }
         ArrayType at = arrays.pop();
-        if (single) {
-            stack.peek().addProperty(at.name(), at.array().iterator().next());
-        } else {
-            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
-        }
-    }    
-    
-    private void writeDoubleValues(VR vr, Object val, boolean bigEndian, boolean single) {
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
+    }
+
+    private void writeDoubleValues(VR vr, Object val, boolean bigEndian) {
         arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             double d = vr.toDouble(val, bigEndian, i, 0);
             if (Double.isNaN(d)) {
-                logger.log(Level.WARNING, "encode {0} Infinity as {1}", new Object[] {vr, d, file});
+                logger.log(Level.INFO, "encode {0} NaN as null -> {1}", new Object[] {vr, file});
                 arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
             } else {
                 if (d == Double.POSITIVE_INFINITY) {
                     d = Double.MAX_VALUE;
-                    logger.info(String.format("encode %s Infinity as %s", vr, d));
+                    logger.log(Level.WARNING, "encode {0} Infinity as {1} -> {2}", new Object[] {vr, d, file});
                 } else if (d == Double.NEGATIVE_INFINITY) {
                     d = -Double.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} -Infinity as {1}", new Object[] {vr, d, file});
+                    logger.log(Level.WARNING, "encode {0} -Infinity as {1} -> {2}", new Object[] {vr, d, file});
                 }
                 arrays.peek().array().add(m.createTypedLiteral(d,XSDDatatype.XSDdouble));
             }
         }
         ArrayType at = arrays.pop();
-        if (single) {
-            stack.peek().addProperty(at.name(), at.array().iterator().next());
-        } else {
-            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
-        }
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
     }
 
-    private void writeIntValues(VR vr, Object val, boolean bigEndian, boolean single) {
+    private void writeIntValues(VR vr, Object val, boolean bigEndian) {
         arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
-            arrays.peek().array().add(m.createTypedLiteral(vr.toInt(val, bigEndian, i, 0),XSDDatatype.XSDinteger)); 
+            arrays.peek().array().add(m.createTypedLiteral(vr.toInt(val, bigEndian, i, 0),XSDDatatype.XSDinteger));
         }
         ArrayType at = arrays.pop();
-        if (single) {
-            stack.peek().addProperty(at.name(), at.array().iterator().next());
-        } else {
-            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
-        }
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
     }
 
-    private void writeUIntValues(VR vr, Object val, boolean bigEndian, boolean single) {
+    private void writeUIntValues(VR vr, Object val, boolean bigEndian) {
         arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
@@ -411,24 +383,18 @@ public class RDFWriter implements DicomInputHandler {
             arrays.peek().array().add(m.createTypedLiteral(num,XSDDatatype.XSDunsignedInt));
         }
         ArrayType at = arrays.pop();
-        if (single) {
-            stack.peek().addProperty(at.name(), at.array().iterator().next());
-        } else {
-            stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
-        }
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
     }
 
     private void writeLongValues(LongFunction<String> toString, VR vr, Object val, boolean bigEndian) {
-        boolean asString = true;
+        arrays.push(new ArrayType(Value, new ArrayList<>()));
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             long l = vr.toLong(val, bigEndian, i, 0);
-            if (asString || (l < 0 ? (vr == VR.UV || (-l >> DOUBLE_MAX_BITS) > 0) : (l >> DOUBLE_MAX_BITS) > 0)) {
-                throw new Error("ACK!!!");
-            } else {
-                arrays.peek().array().add(m.createTypedLiteral(l,XSDDatatype.XSDlong));
-            }
+            arrays.peek().array().add(m.createTypedLiteral(toString.apply(l), XSDDatatype.XSDinteger));
         }
+        ArrayType at = arrays.pop();
+        stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
     }
 
     private void writePersonName(String s) {
@@ -494,15 +460,15 @@ public class RDFWriter implements DicomInputHandler {
         if (len == 0)
             arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
         else {
-            stack.push(m.createResource());
+            Resource item = m.createResource();
+            arrays.peek().array().add(item);
+            stack.push(item);
             if (dis.isIncludeBulkDataURI()) {
                 writeBulkData(dis.createBulkData(dis));
             } else {
-                writeInlineBinary(frags.vr(), dis.readValue(), 
-                dis.bigEndian(), false);
+                writeInlineBinary(frags.vr(), dis.readValue(), dis.bigEndian(), false);
             }
             stack.pop();
-            throw new Error("ACK!!!");
         }
     }
 
