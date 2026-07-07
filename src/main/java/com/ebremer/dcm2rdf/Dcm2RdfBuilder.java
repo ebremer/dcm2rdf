@@ -74,7 +74,8 @@ public final class Dcm2RdfBuilder {
 
     /**
      * CLI {@code -extra}: record the source file URI and file size in the model.
-     * Requires file input; {@link #toModel(SeekableByteChannel)} rejects it.
+     * For channel input the source is identified by the {@code name} passed to
+     * {@link #toModel(Path, String, SeekableByteChannel)}.
      */
     public Dcm2RdfBuilder extra(boolean extra) {
         this.extra = extra;
@@ -178,16 +179,18 @@ public final class Dcm2RdfBuilder {
      * Converts DICOM read from the channel's current position to RDF. The channel is
      * left open; the caller retains ownership and must close it.
      *
+     * @param path the source path the DICOM data came from; reported in log messages
+     * @param name logical name of the DICOM source, used in statistics, error messages,
+     *        and (with {@link #extra}) the recorded source URI and file size. A {@code #}
+     *        separates an archive path from a member name, as the CLI does for tar
+     *        entries (e.g. {@code /data/scans.tar#img.dcm}).
+     * @param sbc channel positioned at the start of the DICOM data
      * @throws IOException if the channel cannot be read
-     * @throws IllegalStateException if {@link #extra} is set (there is no source file
-     *         to describe), or if the source lacks the data the configuration needs
+     * @throws IllegalStateException if the source lacks the data the configuration
+     *         needs (e.g. no SOP Instance UID with {@link Naming#SOP_INSTANCE_UID})
      */
-    public Model toModel(SeekableByteChannel sbc) throws IOException {
-        if (extra) {
-            throw new IllegalStateException("extra records the source file URI and size; it requires toModel(File) or toModel(Path)");
-        }
-        Path name = Path.of("SeekableByteChannel");
-        return convert(name, name.toString(), Channels.newInputStream(sbc));
+    public Model toModel(Path path, String name, SeekableByteChannel sbc) throws IOException {
+        return convert(path, name, Channels.newInputStream(sbc));
     }
 
     private Model convert(Path src, String name, InputStream is) {

@@ -206,4 +206,10 @@
             <url>https://www.dcm4che.org/maven2</url>
         </repository>
     </repositories>
+    <distributionManagement>
+        <repository>
+            <id>halcyon</id>
+            <url>https://cursus.bmi.stonybrookmedicine.edu/releases</url>
+        </repository>
+    </distributionManagement>
 </project>

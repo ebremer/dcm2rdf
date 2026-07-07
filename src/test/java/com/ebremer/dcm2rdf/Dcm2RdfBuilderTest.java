@@ -72,7 +72,7 @@ class Dcm2RdfBuilderTest {
     @Test
     void convertsInMemoryChannelAndLeavesItOpen() throws Exception {
         try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(syntheticDicom("1.2.3.4.12"))) {
-            Model m = new Dcm2RdfBuilder().toModel(sbc);
+            Model m = new Dcm2RdfBuilder().toModel(Path.of("mem.dcm"), "mem.dcm", sbc);
             assertTrue(m.containsResource(m.createResource("urn:oid:1.2.3.4.12")));
             assertTrue(sbc.isOpen(), "builder must not close the caller's channel");
         }
@@ -83,7 +83,7 @@ class Dcm2RdfBuilderTest {
         Path dcm = dir.resolve("img.dcm");
         Files.write(dcm, syntheticDicom("1.2.3.4.13"));
         try (SeekableByteChannel sbc = Files.newByteChannel(dcm, StandardOpenOption.READ)) {
-            Model m = new Dcm2RdfBuilder().toModel(sbc);
+            Model m = new Dcm2RdfBuilder().toModel(dcm, dcm.toString(), sbc);
             assertTrue(m.containsResource(m.createResource("urn:oid:1.2.3.4.13")));
         }
     }
@@ -92,7 +92,8 @@ class Dcm2RdfBuilderTest {
     void sha256NamingNamesSubjectByDigest() throws Exception {
         byte[] dicom = syntheticDicom("1.2.3.4.14");
         try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(dicom)) {
-            Model m = new Dcm2RdfBuilder().naming(Dcm2RdfBuilder.Naming.SHA256).toModel(sbc);
+            Model m = new Dcm2RdfBuilder().naming(Dcm2RdfBuilder.Naming.SHA256)
+                .toModel(Path.of("mem.dcm"), "mem.dcm", sbc);
             assertTrue(m.containsResource(m.createResource("urn:sha256:" + sha256(dicom))));
         }
     }
@@ -128,9 +129,16 @@ class Dcm2RdfBuilderTest {
     }
 
     @Test
-    void extraRejectsChannelInput() throws Exception {
-        try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(syntheticDicom("1.2.3.4.18"))) {
-            assertThrows(IllegalStateException.class, () -> new Dcm2RdfBuilder().extra(true).toModel(sbc));
+    void extraViaChannelRecordsNamedSource(@TempDir Path dir) throws Exception {
+        byte[] dicom = syntheticDicom("1.2.3.4.18");
+        Path dcm = dir.resolve("img.dcm");
+        Files.write(dcm, dicom);
+        try (SeekableByteChannel sbc = Files.newByteChannel(dcm, StandardOpenOption.READ)) {
+            Model m = new Dcm2RdfBuilder().extra(true).toModel(dcm, dcm.toString(), sbc);
+            Resource subject = m.createResource("urn:oid:1.2.3.4.18");
+            assertTrue(m.contains(subject, PROVO.wasDerivedFrom, m.createResource(dcm.toUri().toString())));
+            assertTrue(m.contains(subject, LOC.BibFrame.FileSize,
+                ResourceFactory.createTypedLiteral(String.valueOf(dicom.length), XSDDatatype.XSDinteger)));
         }
     }
 
