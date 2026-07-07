@@ -12,10 +12,10 @@
             <properties>
                 <exec.vmArgs></exec.vmArgs>
                 <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
-                <exec.appArgs>-src src2 -dest rdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
+                <exec.appArgs>-src dicom -dest dicomrdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
                 <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
                 <exec.executable>java</exec.executable>
-                <exec.workingdir>d:\us</exec.workingdir>
+                <exec.workingdir>D:\HalcyonStorage\tcga\coad</exec.workingdir>
             </properties>
         </action>
         <action>
@@ -30,11 +30,11 @@
             <properties>
                 <exec.vmArgs>-agentlib:jdwp=transport=dt_socket,server=n,address=${jpda.address}</exec.vmArgs>
                 <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
-                <exec.appArgs>-src src2 -dest rdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
+                <exec.appArgs>-src dicom -dest dicomrdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
                 <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
                 <exec.executable>java</exec.executable>
                 <jpda.listen>true</jpda.listen>
-                <exec.workingdir>d:\us</exec.workingdir>
+                <exec.workingdir>D:\HalcyonStorage\tcga\coad</exec.workingdir>
             </properties>
         </action>
         <action>
@@ -51,8 +51,8 @@
                 <exec.args>${exec.vmArgs} -classpath %classpath ${exec.mainClass} ${exec.appArgs}</exec.args>
                 <exec.mainClass>com.ebremer.dcm2rdf.dcm2rdf</exec.mainClass>
                 <exec.executable>java</exec.executable>
-                <exec.appArgs>-src src2 -dest rdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
-                <exec.workingdir>d:\us</exec.workingdir>
+                <exec.appArgs>-src dicom -dest dicomrdf -status -t 16 -overwrite -cdt -oid -extra -c</exec.appArgs>
+                <exec.workingdir>D:\HalcyonStorage\tcga\coad</exec.workingdir>
             </properties>
         </action>
     </actions>

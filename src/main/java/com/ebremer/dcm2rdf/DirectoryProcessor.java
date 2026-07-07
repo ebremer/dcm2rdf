@@ -160,31 +160,9 @@ class FileProcessor implements Callable<Model> {
     }
 
     public Model ScanMeta(Parameters params, String xfile, InputStream is) {
-        DICOM2RDF d2r = new DICOM2RDF(params);     
-        Model m = d2r.ProcessDICOMasBytes2Model(file, xfile, is);                 
-        if (!params.LongForm) {
-            if (params.oid) {
-               m = d2r.OptimizeUR2URNOID(m);
-            }
-            m = d2r.OptimizeRemoveEmptyFieldandVRs(m);
-            m = d2r.OptimizeRemoveRDFListWhenAlwaysOne(m);
-            if (params.wkt) {
-                m = d2r.OptimizePolygons2WKT(m);
-            }
-            if (params.detlef) {
-                m = d2r.GenSeqNames(m);
-            }
-            if (params.cdt) {
-                m = d2r.RDF2CDRLists(m);
-            }
-            if (params.ptags) {
-                m = d2r.PtagTweak(m);
-            }
-            if (params.sbu || params.padleftzero) {
-                d2r.PadLeftZero8(m);
-            }
-        }
-        return m;
+        DICOM2RDF d2r = new DICOM2RDF(params);
+        Model m = d2r.ProcessDICOMasBytes2Model(file, xfile, is);
+        return d2r.applyPostProcessing(m);
     }
 
     private void ProcessTar(TarArchiveInputStream tarInput, Path root, String srcRoot) throws IOException {

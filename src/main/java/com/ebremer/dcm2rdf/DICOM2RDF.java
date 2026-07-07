@@ -265,6 +265,39 @@ public class DICOM2RDF {
         return m;
     }
     
+    /**
+     * Applies the standard post-conversion tweaks and optimizations selected in
+     * {@link Parameters} to a model produced by ProcessDICOMasBytes2Model. This is the
+     * same pipeline the command line applies to each converted file. A no-op when
+     * LongForm is set. May return a different Model instance than the one passed in.
+     */
+    public Model applyPostProcessing(Model m) {
+        if (!params.LongForm) {
+            if (params.oid) {
+                m = OptimizeUR2URNOID(m);
+            }
+            m = OptimizeRemoveEmptyFieldandVRs(m);
+            m = OptimizeRemoveRDFListWhenAlwaysOne(m);
+            if (params.wkt) {
+                m = OptimizePolygons2WKT(m);
+            }
+            if (params.detlef) {
+                m = GenSeqNames(m);
+            }
+            if (params.cdt) {
+                m = RDF2CDRLists(m);
+                m.setNsPrefix("cdt", "http://w3id.org/awslabs/neptune/SPARQL-CDTs/");
+            }
+            if (params.ptags) {
+                m = PtagTweak(m);
+            }
+            if (params.sbu || params.padleftzero) {
+                PadLeftZero8(m);
+            }
+        }
+        return m;
+    }
+
     public void FlipURI(String srcURI, String destURI, Model m) {
         UpdateRequest request = UpdateFactory.create();
         ParameterizedSparqlString pss = new ParameterizedSparqlString(
