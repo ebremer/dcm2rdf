@@ -46,7 +46,10 @@ class PipelineTest {
     }
 
     private static void addEntry(TarArchiveOutputStream tos, String name, byte[] data) throws Exception {
-        TarArchiveEntry e = new TarArchiveEntry(name);
+        addEntry(tos, new TarArchiveEntry(name), data);
+    }
+
+    private static void addEntry(TarArchiveOutputStream tos, TarArchiveEntry e, byte[] data) throws Exception {
         e.setSize(data.length);
         tos.putArchiveEntry(e);
         tos.write(data);
@@ -125,5 +128,37 @@ class PipelineTest {
         DirectoryProcessor again = new DirectoryProcessor(params);
         again.Protocol(DirectoryProcessor.FileType.DICOM);
         assertEquals(0, again.getFileCounter().getFailedConversionFileCount());
+    }
+
+    @Test
+    void hostileTarEntriesCannotEscapeDestination(@TempDir Path src, @TempDir Path dest) throws Exception {
+        ByteArrayOutputStream innerBytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream tos = new TarArchiveOutputStream(innerBytes)) {
+            addEntry(tos, "inner.dcm", syntheticDicom("1.2.3.4.402"));
+        }
+        ByteArrayOutputStream outerBytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream tos = new TarArchiveOutputStream(outerBytes)) {
+            addEntry(tos, "a/../../../../escape.dcm", syntheticDicom("1.2.3.4.400"));
+            // TarArchiveEntry(String) strips leading slashes; a crafted archive keeps them
+            addEntry(tos, new TarArchiveEntry("/absolute.dcm", true), syntheticDicom("1.2.3.4.401"));
+            addEntry(tos, "../inner.tar", innerBytes.toByteArray());
+            addEntry(tos, "safe.dcm", syntheticDicom("1.2.3.4.403"));
+        }
+        Files.write(src.resolve("evil.tar"), outerBytes.toByteArray());
+        Parameters params = params(src, dest);
+        DirectoryProcessor dp = new DirectoryProcessor(params);
+        dp.Protocol(DirectoryProcessor.FileType.DICOM);
+
+        // each hostile entry is rejected and counted as failed; the harmless entry still converts
+        assertEquals(3, dp.getFileCounter().getFailedConversionFileCount());
+        Path safe = dest.resolve("evil.tar#safe.ttl");
+        assertTrue(Files.exists(safe), "expected safe entry output at " + safe);
+        // where the ".." entry would have landed without the entry-name check
+        Path escaped = dest.resolve("evil.tar#a/../../../../escape.ttl").normalize();
+        assertFalse(Files.exists(escaped), "tar entry escaped the destination: " + escaped);
+        // and inside the destination, the safe output must be the only file written
+        try (var walk = Files.walk(dest)) {
+            assertEquals(java.util.List.of(safe), walk.filter(Files::isRegularFile).toList());
+        }
     }
 }

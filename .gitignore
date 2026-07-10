@@ -36,3 +36,6 @@ target/*
 
 # odd files
 dependency-reduced-pom.xml
+
+# local code review notes
+REVIEW.md

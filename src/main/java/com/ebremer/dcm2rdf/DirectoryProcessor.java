@@ -165,6 +165,24 @@ class FileProcessor implements Callable<Model> {
         return d2r.applyPostProcessing(m);
     }
 
+    // A tar entry name is only safe to splice into a destination path if it cannot climb out
+    // of it: no absolute form, no Windows drive prefix, no ".." segment (zip-slip). Both
+    // separators are checked because Windows resolves '/' and '\'.
+    private static boolean hasUnsafePath(String name) {
+        if (name.startsWith("/") || name.startsWith("\\")) {
+            return true;
+        }
+        if (name.length() > 1 && name.charAt(1) == ':') {
+            return true;
+        }
+        for (String segment : name.split("[/\\\\]")) {
+            if (segment.equals("..")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void ProcessTar(TarArchiveInputStream tarInput, Path root, String srcRoot) throws IOException {
         TarArchiveEntry ce = tarInput.getNextEntry();
         while (ce != null) {
@@ -173,23 +191,29 @@ class FileProcessor implements Callable<Model> {
             } else {
                 if (ce.getSize()==0) {
                     if (params.status) fc.incrementZeroLengthFileCount();
-                    logger.log(Level.SEVERE, "Zero Length File {0}", Path.of(root.toString(), ce.getName()));
+                    logger.log(Level.SEVERE, "Zero Length File {0}", srcRoot+"#"+ce.getName());
                 } else {
                     FileType tft = RandomUtils.getFileType(ce.getName());
-                    switch(tft) {
-                        case DICOM, DICOMDIR -> {
-                            if (params.status) fc.incrementTarDicomFileCount();
-                            String tdest = RandomUtils.StripExtension(root.toString()+"#"+ce.getName())
-                                +(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension());
-                            ProcessDICOM(params, srcRoot+"#"+ce.getName(), tdest, tarInput);
+                    if (tft != FileType.UNKNOWN && hasUnsafePath(ce.getName())) {
+                        // zip-slip: an entry named "a/../../x.dcm" would place its output outside -dest
+                        logger.log(Level.SEVERE, "Rejecting tar entry with unsafe path : {0}", srcRoot+"#"+ce.getName());
+                        fc.incrementFailedConversionFileCount();
+                    } else {
+                        switch(tft) {
+                            case DICOM, DICOMDIR -> {
+                                if (params.status) fc.incrementTarDicomFileCount();
+                                String tdest = RandomUtils.StripExtension(root.toString()+"#"+ce.getName())
+                                    +(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension());
+                                ProcessDICOM(params, srcRoot+"#"+ce.getName(), tdest, tarInput);
+                            }
+                            case TAR -> {
+                                if (params.status) fc.incrementTarTarFileCount();
+                                // The nested archive is the current entry's payload: wrap it in its own tar stream.
+                                // Left unclosed on purpose - closing it would close the outer stream.
+                                ProcessTar(new TarArchiveInputStream(tarInput), Path.of(root.toString(), ce.getName()), srcRoot+"#"+ce.getName());
+                            }
+                            default -> fc.incrementTarOtherFileCount();
                         }
-                        case TAR -> {
-                            if (params.status) fc.incrementTarTarFileCount();
-                            // The nested archive is the current entry's payload: wrap it in its own tar stream.
-                            // Left unclosed on purpose - closing it would close the outer stream.
-                            ProcessTar(new TarArchiveInputStream(tarInput), Path.of(root.toString(), ce.getName()), srcRoot+"#"+ce.getName());
-                        }
-                        default -> fc.incrementTarOtherFileCount();
                     }
                 }
             }
