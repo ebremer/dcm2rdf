@@ -152,6 +152,20 @@ class Dcm2RdfBuilderTest {
     }
 
     @Test
+    void truncatedInputThrowsInsteadOfReturningAPartialModel(@TempDir Path dir) throws Exception {
+        byte[] dicom = syntheticDicom("1.2.3.4.30");
+        // cuts into the value of the last element, so parsing hits EOF mid-element
+        byte[] cut = java.util.Arrays.copyOf(dicom, dicom.length - 1);
+        Path dcm = dir.resolve("cut.dcm");
+        Files.write(dcm, cut);
+        assertThrows(java.io.IOException.class, () -> new Dcm2RdfBuilder().toModel(dcm));
+        try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(cut)) {
+            assertThrows(java.io.IOException.class,
+                () -> new Dcm2RdfBuilder().hash(true).toModel(Path.of("cut.dcm"), "cut.dcm", sbc));
+        }
+    }
+
+    @Test
     void builderIsReusable(@TempDir Path dir) throws Exception {
         Dcm2RdfBuilder builder = new Dcm2RdfBuilder();
         for (int i = 0; i < 2; i++) {

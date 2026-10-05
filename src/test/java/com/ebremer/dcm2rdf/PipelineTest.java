@@ -17,6 +17,7 @@ import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.UID;
 import org.dcm4che3.data.VR;
 import org.dcm4che3.io.DicomOutputStream;
+import org.dcm4che3.media.DicomDirWriter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -128,6 +129,75 @@ class PipelineTest {
         DirectoryProcessor again = new DirectoryProcessor(params);
         again.Protocol(DirectoryProcessor.FileType.DICOM);
         assertEquals(0, again.getFileCounter().getFailedConversionFileCount());
+    }
+
+    // cuts into the value of the last element, so parsing hits EOF mid-element
+    private static byte[] truncated(byte[] dicom) {
+        return java.util.Arrays.copyOf(dicom, dicom.length - 1);
+    }
+
+    @Test
+    void truncatedFileFailsWithoutWritingOutput(@TempDir Path src, @TempDir Path dest) throws Exception {
+        Files.write(src.resolve("cut.dcm"), truncated(syntheticDicom("1.2.3.4.500")));
+        Parameters params = params(src, dest);
+        DirectoryProcessor dp = new DirectoryProcessor(params);
+        dp.Protocol(DirectoryProcessor.FileType.DICOM);
+        assertEquals(1, dp.getFileCounter().getFailedConversionFileCount());
+        assertFalse(Files.exists(dest.resolve("cut.ttl")), "a partial parse must not be written as a conversion");
+    }
+
+    @Test
+    void badTarEntriesDoNotAbortTheRestOfTheArchive(@TempDir Path src, @TempDir Path dest) throws Exception {
+        ByteArrayOutputStream tarBytes = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream tos = new TarArchiveOutputStream(tarBytes)) {
+            addEntry(tos, "cut.dcm", truncated(syntheticDicom("1.2.3.4.600")));
+            addEntry(tos, "garbage.dcm", "not dicom at all".getBytes());
+            addEntry(tos, "good.dcm", syntheticDicom("1.2.3.4.601"));
+        }
+        Files.write(src.resolve("mixed.tar"), tarBytes.toByteArray());
+        Parameters params = params(src, dest);
+        DirectoryProcessor dp = new DirectoryProcessor(params);
+        dp.Protocol(DirectoryProcessor.FileType.DICOM);
+
+        assertEquals(2, dp.getFileCounter().getFailedConversionFileCount());
+        Path good = dest.resolve("mixed.tar#good.ttl");
+        assertTrue(Files.exists(good), "entry after the bad ones must still convert: " + good);
+        assertTrue(load(good).containsResource(load(good).createResource("urn:oid:1.2.3.4.601")));
+        assertFalse(Files.exists(dest.resolve("mixed.tar#cut.ttl")));
+        assertFalse(Files.exists(dest.resolve("mixed.tar#garbage.ttl")));
+    }
+
+    @Test
+    void dicomdirIsNamedByMediaStorageSOPInstanceUID(@TempDir Path src, @TempDir Path dest) throws Exception {
+        // a DICOMDIR dataset carries no (0008,0018); only the file meta (0002,0003) identifies it
+        DicomDirWriter.createEmptyDirectory(src.resolve("DICOMDIR").toFile(), "1.2.3.4.700", "FILESET", null, null);
+        Parameters params = params(src, dest);
+        DirectoryProcessor dp = new DirectoryProcessor(params);
+        dp.Protocol(DirectoryProcessor.FileType.DICOM);
+        assertEquals(0, dp.getFileCounter().getFailedConversionFileCount());
+        Path out = dest.resolve("DICOMDIR.ttl");
+        assertTrue(Files.exists(out), "expected DICOMDIR output at " + out);
+        assertTrue(load(out).containsResource(load(out).createResource("urn:oid:1.2.3.4.700")));
+    }
+
+    @Test
+    void collidingOutputNamesFailLoudly(@TempDir Path src, @TempDir Path dest) throws Exception {
+        // img.dcm and img.dat both map to img.ttl: one converts, the other must not pass silently
+        Files.write(src.resolve("img.dcm"), syntheticDicom("1.2.3.4.800"));
+        Files.write(src.resolve("img.dat"), syntheticDicom("1.2.3.4.801"));
+        Parameters params = params(src, dest);
+        params.threads = 4;
+        DirectoryProcessor dp = new DirectoryProcessor(params);
+        dp.Protocol(DirectoryProcessor.FileType.DICOM);
+        assertEquals(1, dp.getFileCounter().getFailedConversionFileCount());
+        try (var walk = Files.walk(dest)) {
+            assertEquals(java.util.List.of(dest.resolve("img.ttl")), walk.filter(Files::isRegularFile).toList());
+        }
+
+        // a rerun must report the collision again, not take the existing output as "already done"
+        DirectoryProcessor again = new DirectoryProcessor(params);
+        again.Protocol(DirectoryProcessor.FileType.DICOM);
+        assertEquals(1, again.getFileCounter().getFailedConversionFileCount());
     }
 
     @Test

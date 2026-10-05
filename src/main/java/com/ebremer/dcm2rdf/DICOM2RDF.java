@@ -12,10 +12,10 @@ import com.ebremer.dcm2rdf.utils.Sha256CalculatingInputStream;
 import com.ebremer.dcm2rdf.utils.Statistics;
 import com.ebremer.dcm2rdf.utils.Tools;
 import java.io.ByteArrayInputStream;
-import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
@@ -96,21 +96,23 @@ public class DICOM2RDF {
         return props;
     }
 
+    // Throws UncheckedIOException if the bytes can't be read as DICOM: a partial parse
+    // (e.g. a truncated file) must not pass for a complete conversion
     public Model toModel(Resource root, Path file, byte[] bytes) {
-        try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){         
+        try ( DicomInputStream dis = new DicomInputStream(new ByteArrayInputStream(bytes)) ){
             dis.setIncludeBulkData(IncludeBulkData.NO);
             RDFWriter rdfwriter = new RDFWriter(file, root, params);
-            dis.setDicomInputHandler(rdfwriter);            
+            dis.setDicomInputHandler(rdfwriter);
             dis.readDatasetUntilPixelData();
-        } catch (EOFException ex) {
-            logger.log(Level.SEVERE, "End of File {0}", file);
         } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Problem with File {0}", file);
+            throw new UncheckedIOException(String.format("Cannot read DICOM %s", file), ex);
         }
         return root.getModel();
     }
-    
-    // Support 
+
+    // Support
+    // Throws UncheckedIOException if the source can't be read as DICOM: a partial parse
+    // (e.g. a truncated file) must not pass for a complete conversion
     public Model toModel(Path src, Resource root, Path file, InputStream is) {
         if ( params.hash || params.naming.equals("SHA256") ) {  
             try {
@@ -125,9 +127,10 @@ public class DICOM2RDF {
                 Statistics.getStatistics().AddFile(file.toFile().length(), 1);
                 Statistics.getStatistics().AddActuallyRead(file.toFile().length());
             } catch (IOException ex) {
-                logger.log(Level.SEVERE, "Problem with File {0}", file);
+                throw new UncheckedIOException(String.format("Cannot read DICOM %s", file), ex);
             } catch (NoSuchAlgorithmException ex) {
-                logger.log(Level.SEVERE, "NoSuchAlgorithmException with File {0}", file);
+                // SHA-256 is a mandatory JCA algorithm; a JVM without it is unusable here
+                throw new IllegalStateException("SHA-256 unavailable", ex);
             }
         } else {
             try {
@@ -141,9 +144,9 @@ public class DICOM2RDF {
                 }
                 Statistics.getStatistics().AddActuallyRead(dis.getPosition());
             } catch (IOException ex) {
-                logger.log(Level.SEVERE, String.format("Problem with File %s", file), ex);
+                throw new UncheckedIOException(String.format("Cannot read DICOM %s", file), ex);
             }
-        }        
+        }
         return root.getModel();
     }
 
@@ -187,7 +190,7 @@ public class DICOM2RDF {
             }
         }
         m.setNsPrefix("dcm", DCM.NS);                        
-        Optional<String> uid = getSOPInstanceUID(m);
+        Optional<String> uid = getNamingUID(m);
         switch (params.naming) {
             case "SHA256" -> {
                 if (hash.isPresent()) {                   
@@ -243,7 +246,7 @@ public class DICOM2RDF {
         d2r.toModel(root,file,bytes);        
         root.addProperty(RDF.type, DCM.SOPInstance);
         m.setNsPrefix("dcm", DCM.NS);
-        Optional<String> uid = getSOPInstanceUID(m);
+        Optional<String> uid = getNamingUID(m);
         switch (params.naming) {
             case "SHA256" -> {
                 if (sha256Hash.isPresent()) {                   
@@ -380,17 +383,32 @@ public class DICOM2RDF {
         return m;
     }
     
+    // A DICOMDIR's dataset has no SOP Instance UID; its instance is identified by the file meta
+    // Media Storage SOP Instance UID, which is the fallback for any dataset lacking (0008,0018)
+    private Optional<String> getNamingUID(Model m) {
+        return getSOPInstanceUID(m).or(() -> getMediaStorageSOPInstanceUID(m));
+    }
+
     public Optional<String> getSOPInstanceUID(Model m) {
-        ParameterizedSparqlString pss = new ParameterizedSparqlString(
+        return getUID(m, "00080018", "SOPInstanceUID");
+    }
+
+    public Optional<String> getMediaStorageSOPInstanceUID(Model m) {
+        return getUID(m, "00020003", "MediaStorageSOPInstanceUID");
+    }
+
+    // first value of a UI attribute, under either its hex or its keyword predicate
+    private Optional<String> getUID(Model m, String hexTag, String keyword) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString(String.format(
         """
         select ?uid
         where {
-            { ?s dcm:00080018/dcm:Value/rdf:first ?uid }
+            { ?s dcm:%s/dcm:Value/rdf:first ?uid }
             union
-            { ?s dcm:SOPInstanceUID/dcm:Value/rdf:first ?uid }
+            { ?s dcm:%s/dcm:Value/rdf:first ?uid }
         }
         limit 1
-        """);
+        """, hexTag, keyword));
         pss.setNsPrefix("dcm", DCM.NS);
         pss.setNsPrefix("rdf", RDF.uri);
         ResultSet rs = QueryExecutionFactory.create(pss.toString(), m).execSelect();

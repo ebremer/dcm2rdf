@@ -16,7 +16,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -38,8 +40,10 @@ public class DirectoryProcessor {
     private final Parameters params;
     private final FileCounter fc;
     private final ProgressBar progressBar;
-    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());    
-    
+    // absolute, normalized output paths taken by a source in this run
+    private final Set<Path> claimedOutputs = ConcurrentHashMap.newKeySet();
+    private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
+
     public DirectoryProcessor(Parameters params) {
         String os = System.getProperty("os.name").toLowerCase();
         ProgressBarStyle style;
@@ -100,7 +104,7 @@ public class DirectoryProcessor {
                         progressBar.maxHint(fc.getDicomFileCount()+fc.getTarFileCount());
                         progressBar.stepTo(engine.getCompletedTaskCount());
                     }
-                    engine.submit(new FileProcessor(params,fc,ft,p));
+                    engine.submit(new FileProcessor(params,fc,claimedOutputs,ft,p));
                     return FileVisitResult.CONTINUE;
                 }
 
@@ -149,12 +153,14 @@ class FileProcessor implements Callable<Model> {
     private final Parameters params;
     private final FileCounter fc;
     private final DirectoryProcessor.FileType ft;
+    private final Set<Path> claimedOutputs;
     private static final Logger logger = Logger.getLogger(dcm2rdf.class.getName());
     private enum STAT { CREATED, FAILED, ALREADYDONE };
 
-    public FileProcessor(Parameters params, FileCounter fc, DirectoryProcessor.FileType ft, Path file) {
+    public FileProcessor(Parameters params, FileCounter fc, Set<Path> claimedOutputs, DirectoryProcessor.FileType ft, Path file) {
         this.params = params;
         this.fc = fc;
+        this.claimedOutputs = claimedOutputs;
         this.ft = ft;
         this.file = file;
     }
@@ -199,20 +205,28 @@ class FileProcessor implements Callable<Model> {
                         logger.log(Level.SEVERE, "Rejecting tar entry with unsafe path : {0}", srcRoot+"#"+ce.getName());
                         fc.incrementFailedConversionFileCount();
                     } else {
-                        switch(tft) {
-                            case DICOM, DICOMDIR -> {
-                                if (params.status) fc.incrementTarDicomFileCount();
-                                String tdest = RandomUtils.StripExtension(root.toString()+"#"+ce.getName())
-                                    +(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension());
-                                ProcessDICOM(params, srcRoot+"#"+ce.getName(), tdest, tarInput);
+                        // One bad entry must not abort the rest of the archive: count it and move on.
+                        // getNextEntry() skips whatever the failed entry left unread; a broken archive
+                        // stream fails there instead and ends the archive.
+                        try {
+                            switch(tft) {
+                                case DICOM, DICOMDIR -> {
+                                    if (params.status) fc.incrementTarDicomFileCount();
+                                    String tdest = RandomUtils.StripExtension(root.toString()+"#"+ce.getName())
+                                        +(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension());
+                                    ProcessDICOM(params, srcRoot+"#"+ce.getName(), tdest, tarInput);
+                                }
+                                case TAR -> {
+                                    if (params.status) fc.incrementTarTarFileCount();
+                                    // The nested archive is the current entry's payload: wrap it in its own tar stream.
+                                    // Left unclosed on purpose - closing it would close the outer stream.
+                                    ProcessTar(new TarArchiveInputStream(tarInput), Path.of(root.toString(), ce.getName()), srcRoot+"#"+ce.getName());
+                                }
+                                default -> fc.incrementTarOtherFileCount();
                             }
-                            case TAR -> {
-                                if (params.status) fc.incrementTarTarFileCount();
-                                // The nested archive is the current entry's payload: wrap it in its own tar stream.
-                                // Left unclosed on purpose - closing it would close the outer stream.
-                                ProcessTar(new TarArchiveInputStream(tarInput), Path.of(root.toString(), ce.getName()), srcRoot+"#"+ce.getName());
-                            }
-                            default -> fc.incrementTarOtherFileCount();
+                        } catch (Exception ex) {
+                            logger.log(Level.SEVERE, String.format("Conversion failed : %s ---> %s", ex, srcRoot+"#"+ce.getName()), ex);
+                            fc.incrementFailedConversionFileCount();
                         }
                     }
                 }
@@ -223,6 +237,13 @@ class FileProcessor implements Callable<Model> {
     
     private STAT ProcessDICOM(Parameters params, String src, String fdest, InputStream is) throws IOException {
         Path dest = Paths.get(fdest);
+        // Distinct sources can map to one output (img.dcm and img.dat both become img.ttl). The first
+        // to claim it wins; later ones fail loudly instead of passing as "already done" or racing the write
+        if (!claimedOutputs.add(dest.toAbsolutePath().normalize())) {
+            logger.log(Level.SEVERE, "Output {0} is already claimed by another source; not converting {1}", new Object[] {dest, src});
+            fc.incrementFailedConversionFileCount();
+            return STAT.FAILED;
+        }
         if ( !dest.toFile().exists() || params.overwrite ) {
             Model m = ScanMeta(params, src, is);
             if (params.cdt) {
@@ -247,20 +268,18 @@ class FileProcessor implements Callable<Model> {
         try {
             String frag = Path.of(params.dest.toString(), params.src.toPath().relativize(file).toString()).toString();
             switch (ft) {
+                // ProcessDICOM decides whether an existing output is kept - it must see every source
+                // first, to catch two sources claiming the same output
                 case DICOM -> {
                     try (FileInputStream fis = new FileInputStream(file.toFile())) {
                         Path xdest = Paths.get(RandomUtils.StripExtension(frag)+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
-                        if (!xdest.toFile().exists() || params.overwrite) {
-                            ProcessDICOM(params, file.toString(), xdest.toString(), fis);
-                        }
+                        ProcessDICOM(params, file.toString(), xdest.toString(), fis);
                     }
                 }
                 case DICOMDIR -> {
                     try (FileInputStream fis = new FileInputStream(file.toFile())) {
                         Path xdest = Paths.get(frag+(params.compress?String.format(".%s.gz",params.format.getExtension()):"."+params.format.getExtension()));
-                        if (!xdest.toFile().exists() || params.overwrite) {
-                            ProcessDICOM(params, file.toString(), xdest.toString(), fis);
-                        }
+                        ProcessDICOM(params, file.toString(), xdest.toString(), fis);
                     }
                 }
                 case TAR -> {

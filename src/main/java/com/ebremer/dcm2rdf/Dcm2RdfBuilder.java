@@ -5,6 +5,7 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.channels.Channels;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -39,7 +40,10 @@ public final class Dcm2RdfBuilder {
 
     /** Subject URI minting strategy, mirroring the CLI {@code -naming} option. */
     public enum Naming {
-        /** Name the SOP instance {@code urn:oid:<SOPInstanceUID>} (the default). */
+        /**
+         * Name the SOP instance {@code urn:oid:<SOPInstanceUID>} (the default), falling back to
+         * the Media Storage SOP Instance UID when the dataset has none (e.g. a DICOMDIR).
+         */
         SOP_INSTANCE_UID("SOPInstanceUID"),
         /** Name the SOP instance {@code urn:sha256:<hash of the source bytes>}. */
         SHA256("SHA256");
@@ -154,9 +158,11 @@ public final class Dcm2RdfBuilder {
     /**
      * Converts a DICOM file to RDF.
      *
-     * @throws IOException if the file cannot be opened or read
+     * @throws IOException if the file cannot be opened, or cannot be read as DICOM
+     *         (e.g. it is truncated)
      * @throws IllegalStateException if the source lacks the data the configuration
-     *         needs (e.g. no SOP Instance UID with {@link Naming#SOP_INSTANCE_UID})
+     *         needs (e.g. no SOP Instance UID or Media Storage SOP Instance
+     *         UID with {@link Naming#SOP_INSTANCE_UID})
      */
     public Model toModel(File file) throws IOException {
         return toModel(file.toPath());
@@ -165,9 +171,11 @@ public final class Dcm2RdfBuilder {
     /**
      * Converts a DICOM file to RDF.
      *
-     * @throws IOException if the file cannot be opened or read
+     * @throws IOException if the file cannot be opened, or cannot be read as DICOM
+     *         (e.g. it is truncated)
      * @throws IllegalStateException if the source lacks the data the configuration
-     *         needs (e.g. no SOP Instance UID with {@link Naming#SOP_INSTANCE_UID})
+     *         needs (e.g. no SOP Instance UID or Media Storage SOP Instance
+     *         UID with {@link Naming#SOP_INSTANCE_UID})
      */
     public Model toModel(Path path) throws IOException {
         try (InputStream is = new BufferedInputStream(Files.newInputStream(path))) {
@@ -185,18 +193,24 @@ public final class Dcm2RdfBuilder {
      *        separates an archive path from a member name, as the CLI does for tar
      *        entries (e.g. {@code /data/scans.tar#img.dcm}).
      * @param sbc channel positioned at the start of the DICOM data
-     * @throws IOException if the channel cannot be read
+     * @throws IOException if the channel cannot be read as DICOM (e.g. it is truncated)
      * @throws IllegalStateException if the source lacks the data the configuration
-     *         needs (e.g. no SOP Instance UID with {@link Naming#SOP_INSTANCE_UID})
+     *         needs (e.g. no SOP Instance UID or Media Storage SOP Instance
+     *         UID with {@link Naming#SOP_INSTANCE_UID})
      */
     public Model toModel(Path path, String name, SeekableByteChannel sbc) throws IOException {
         return convert(path, name, Channels.newInputStream(sbc));
     }
 
-    private Model convert(Path src, String name, InputStream is) {
+    private Model convert(Path src, String name, InputStream is) throws IOException {
         Parameters params = toParameters();
         DICOM2RDF d2r = new DICOM2RDF(params);
-        Model m = d2r.ProcessDICOMasBytes2Model(src, name, is);
+        Model m;
+        try {
+            m = d2r.ProcessDICOMasBytes2Model(src, name, is);
+        } catch (UncheckedIOException ex) {
+            throw new IOException(ex.getMessage(), ex.getCause());
+        }
         return d2r.applyPostProcessing(m);
     }
 
