@@ -1,11 +1,9 @@
 package com.ebremer.dcm2rdf;
 
 import com.ebremer.dcm2rdf.utils.VRFormatException;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
@@ -18,20 +16,14 @@ import org.apache.jena.rdf.model.ResourceFactory;
  */
 public class Convert {
 
-    private static final Logger logger = Logger.getLogger(Convert.class.getName());
-
-    private static final Pattern DATEPATTERN = Pattern.compile("^(\\d{4})(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])$");
+    // DA: YYYYMMDD, or the pre-3.0 YYYY.MM.DD that PS3.5 still recommends accepting
+    private static final Pattern DATEPATTERN = Pattern.compile("(\\d{4})(\\d{2})(\\d{2})|(\\d{4})\\.(\\d{2})\\.(\\d{2})");
+    // DT: YYYY[MM[DD[HH[MM[SS[.F{1,6}]]]]]][&ZZXX] - each part only after the one before it
+    private static final Pattern DT_PATTERN = Pattern.compile(
+        "(\\d{4})(?:(\\d{2})(?:(\\d{2})(?:(\\d{2})(?:(\\d{2})(?:(\\d{2})(?:\\.(\\d{1,6}))?)?)?)?)?)?(?:([+-])(\\d{2})(\\d{2}))?");
     private static final Pattern DSPATTERN = Pattern.compile("[+\\-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([Ee][+\\-]?[0-9]+)?");
     private static final Pattern ISPATTERN = Pattern.compile("[+\\-]?[0-9]+");
     private static final Pattern TMPATTERN = Pattern.compile("\\d{2}(?:\\d{2}(?:\\d{2}(?:\\.\\d{1,6})?)?)?");
-    private static final Pattern DTPATTERN = Pattern.compile("^(\\d{4})(\\d{2})?(\\d{2})?(\\d{2})?(\\d{2})?(\\d{2})?(\\.(\\d{1,6}))?([+-]\\d{4})?$");
-
-    public static String removeTrailingDot(String input) {
-        if (input == null || input.isEmpty()) {
-            return input;
-        }
-        return input.endsWith(".") ? input.substring(0, input.length() - 1) : input;
-    }
 
     public static Literal toTM(String timeValue) {
         if (!TMPATTERN.matcher(timeValue).matches()) {
@@ -69,67 +61,77 @@ public class Convert {
     }
 
     /**
-     * Parses a DICOM DA or DT style value (YYYY[MM[DD[HH[MM[SS[.FFFFFF]]]]]][+/-ZZZZ]) into an
-     * xsd:dateTime literal truncated to whole seconds. Fractional seconds and UTC offsets are
-     * accepted on input but not carried into the output. Zeroed date components are promoted
-     * to 01 so the result is a valid xsd:dateTime.
-     */
-    public static Literal toXsdDateTime(String datetime) {
-        Matcher matcher = DTPATTERN.matcher(datetime.trim());
-        if (!matcher.matches()) {
-            logger.log(Level.WARNING, String.format("Invalid DICOM DA format [%s]", datetime));
-            if (datetime.equals("0000-00-00T00:00:00")) {
-                logger.log(Level.WARNING, "Not a valid xsd:datetime string --> 0000-00-00T00:00:00");
-                return ResourceFactory.createTypedLiteral("0001-01-01T00:00:00", XSDDatatype.XSDdateTime);
-            }
-            throw new VRFormatException(String.format("Invalid DICOM DA format [%s]", datetime));
-        }
-        String year = matcher.group(1);
-        year = year.equals("0000")?"0001":year;
-        String month = matcher.group(2) != null ? matcher.group(2) : "01";
-        month = month.equals("00")?"01":month;
-        String day = matcher.group(3) != null ? matcher.group(3) : "01";
-        day = day.equals("00")?"01":day;
-        String hour = matcher.group(4) != null ? matcher.group(4) : "00";
-        String minute = matcher.group(5) != null ? matcher.group(5) : "00";
-        String second = matcher.group(6) != null ? matcher.group(6) : "00";
-        String xsdDateTime = String.format("%s-%s-%sT%s:%s:%s", year, month, day, hour, minute, second);
-        try {
-            LocalDateTime.parse(xsdDateTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        } catch (DateTimeParseException e) {
-            throw new VRFormatException(String.format("Invalid DICOM DateTime conversion to XSD DateTime for %s", datetime));
-        }
-        return ResourceFactory.createTypedLiteral(xsdDateTime, XSDDatatype.XSDdateTime);
-    }
-
-    /**
-     * @deprecated the name is misleading - this method parses full DT-style values, not just DA.
-     * Use {@link #toXsdDateTime}.
-     */
-    @Deprecated
-    public static Literal toDA(String datetime) {
-        return toXsdDateTime(datetime);
-    }
-
-    /**
-     * Strict DICOM DA (YYYYMMDD) to xsd:date. Not currently used by the writer, which emits
-     * xsd:dateTime for both DA and DT values via {@link #toXsdDateTime}.
+     * DICOM DA (YYYYMMDD, or the legacy YYYY.MM.DD) to xsd:date. The date must exist; year 0000,
+     * which XSD 1.0 lacks and DICOM data uses as a placeholder, is rejected.
+     *
+     * @throws VRFormatException if the value is not a DA date
      */
     public static Literal toXsdDate(String date) {
-        String pdate = date.trim();
-        if (DATEPATTERN.matcher(pdate).matches()) {
-            return ResourceFactory.createTypedLiteral(String.format("%s-%s-%s",pdate.subSequence(0, 4), pdate.substring(4, 6), pdate.substring(6)), XSDDatatype.XSDdate);
+        Matcher m = DATEPATTERN.matcher(date.trim());
+        if (!m.matches()) {
+            throw new VRFormatException("Invalid date string [YYYYMMDD] " + date);
         }
-        throw new VRFormatException("Invalid date string [YYYYMMDD] " + date);
+        int g = m.group(1) != null ? 1 : 4;
+        String year = m.group(g), month = m.group(g + 1), day = m.group(g + 2);
+        checkDate(date, year, month, day);
+        return ResourceFactory.createTypedLiteral(year + "-" + month + "-" + day, XSDDatatype.XSDdate);
     }
 
     /**
-     * @deprecated the name is misleading - this method parses date-only DA values, not DT.
-     * Use {@link #toXsdDate}.
+     * DICOM DT to the XSD type of its precision, keeping the fraction and the UTC offset:
+     * xsd:gYear (YYYY), xsd:gYearMonth (YYYYMM), xsd:date (YYYYMMDD), or xsd:dateTime once an
+     * hour is given. xsd:dateTime needs minutes and seconds, so a time cut short is completed
+     * with zeros - the only padding done. A leap second (SS = 60) has no XSD form.
+     *
+     * @throws VRFormatException if the value is not a DT date-time
      */
-    @Deprecated
-    public static Literal toDT(String date) {
-        return toXsdDate(date);
+    public static Literal toXsdDT(String datetime) {
+        Matcher m = DT_PATTERN.matcher(datetime.trim());
+        if (!m.matches()) {
+            throw new VRFormatException(String.format("Invalid DICOM DT format [%s]", datetime));
+        }
+        String year = m.group(1), month = m.group(2), day = m.group(3), hour = m.group(4);
+        String offset = "";
+        if (m.group(8) != null) {
+            int hh = Integer.parseInt(m.group(9)), mm = Integer.parseInt(m.group(10));
+            // XSD offsets run to 14:00
+            if (hh > 14 || mm > 59 || (hh == 14 && mm != 0)) {
+                throw new VRFormatException(String.format("Invalid DICOM DT offset [%s]", datetime));
+            }
+            offset = m.group(8) + m.group(9) + ":" + m.group(10);
+        }
+        if (month == null) {
+            checkDate(datetime, year, "01", "01");
+            return ResourceFactory.createTypedLiteral(year + offset, XSDDatatype.XSDgYear);
+        }
+        if (day == null) {
+            checkDate(datetime, year, month, "01");
+            return ResourceFactory.createTypedLiteral(year + "-" + month + offset, XSDDatatype.XSDgYearMonth);
+        }
+        checkDate(datetime, year, month, day);
+        String date = year + "-" + month + "-" + day;
+        if (hour == null) {
+            return ResourceFactory.createTypedLiteral(date + offset, XSDDatatype.XSDdate);
+        }
+        String minute = m.group(5) != null ? m.group(5) : "00";
+        String second = m.group(6) != null ? m.group(6) : "00";
+        if (Integer.parseInt(hour) > 23 || Integer.parseInt(minute) > 59 || Integer.parseInt(second) > 59) {
+            throw new VRFormatException(String.format("Invalid DICOM DT time [%s]", datetime));
+        }
+        String fraction = m.group(7) != null ? "." + m.group(7) : "";
+        return ResourceFactory.createTypedLiteral(
+            date + "T" + hour + ":" + minute + ":" + second + fraction + offset, XSDDatatype.XSDdateTime);
+    }
+
+    private static void checkDate(String value, String year, String month, String day) {
+        try {
+            if (Integer.parseInt(year) == 0) {
+                throw new VRFormatException(String.format("Year 0000 is not a date [%s]", value));
+            }
+            LocalDate.of(Integer.parseInt(year), Integer.parseInt(month), Integer.parseInt(day));
+        } catch (DateTimeException ex) {
+            throw new VRFormatException(String.format("No such date [%s]", value));
+        }
     }
 
     public static Literal toDS(String input) {
@@ -143,26 +145,10 @@ public class Convert {
         if (!DSPATTERN.matcher(trimmedInput).matches()) {
             throw new VRFormatException(String.format("Input does not match the DICOM DS format [%s]", input));
         }
-        if (trimmedInput.toLowerCase().contains("e")) {
+        if (trimmedInput.toLowerCase(Locale.ROOT).contains("e")) {
             return ResourceFactory.createTypedLiteral(trimmedInput, XSDDatatype.XSDdouble);
         } else {
             return ResourceFactory.createTypedLiteral(trimmedInput, XSDDatatype.XSDdecimal);
-        }
-    }
-
-    public static Literal toFL(String src) {
-        try {
-            return ResourceFactory.createTypedLiteral((Float.valueOf(src.trim())).toString(), XSDDatatype.XSDfloat);
-        } catch (NumberFormatException ex) {
-            throw new VRFormatException("Invalid Float String : "+src);
-        }
-    }
-
-    public static Literal toFD(String src) {
-        try {
-            return ResourceFactory.createTypedLiteral((Double.valueOf(src.trim())).toString(), XSDDatatype.XSDdouble);
-        } catch (NumberFormatException ex) {
-            throw new VRFormatException("Invalid Floating Point Double : "+src);
         }
     }
 

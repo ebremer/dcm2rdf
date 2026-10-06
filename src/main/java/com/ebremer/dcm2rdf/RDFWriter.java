@@ -1,6 +1,5 @@
 package com.ebremer.dcm2rdf;
 
-import com.ebremer.dcm2rdf.utils.VRFormatException;
 import com.ebremer.dcm2rdf.ns.DCM;
 import com.ebremer.dcm2rdf.parameters.Parameters;
 import java.io.IOException;
@@ -9,19 +8,16 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.LongFunction;
 import java.util.ArrayList;
-import java.util.Stack;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
+import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.ResourceFactory;
-import org.apache.jena.riot.Lang;
-import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.RDF;
-import org.apache.jena.vocabulary.XSD;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.BulkData;
 import org.dcm4che3.data.ElementDictionary;
@@ -66,34 +62,38 @@ import static org.dcm4che3.data.VR.UR;
 import static org.dcm4che3.data.VR.US;
 import static org.dcm4che3.data.VR.UT;
 import static org.dcm4che3.data.VR.UV;
-import org.dcm4che3.data.Value;
 import org.dcm4che3.io.DicomInputHandler;
 import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.util.TagUtils;
 
 /**
  * Allows conversion of DICOM files into RDF format.
+ * <p>
+ * Internal: applications embedding dcm2rdf should use {@link Dcm2RdfBuilder}, whose API is the
+ * supported one. This class may change without notice.
  */
 
 public class RDFWriter implements DicomInputHandler {
-    private static final Logger logger = java.util.logging.Logger.getLogger(dcm2rdf.class.getName());
-    private static final int DOUBLE_MAX_BITS = 53;
+    private static final Logger logger = Logger.getLogger(RDFWriter.class.getName());
     private final Deque<Boolean> hasItems = new ArrayDeque<>();
-    private String replaceBulkDataURI;
     private final Model m;
-    private final Stack<Resource> stack = new Stack<>();
-    private final Stack<ArrayType> arrays = new Stack<>();
+    private final Deque<Resource> stack = new ArrayDeque<>();
+    private final Deque<ArrayType> arrays = new ArrayDeque<>();
     private final Property Value = ResourceFactory.createProperty(DCM.NS, "Value");
     private final Property DataFragment = ResourceFactory.createProperty(DCM.NS, "DataFragment");
     private final Property pvr = ResourceFactory.createProperty(DCM.NS, "vr");
     private record ArrayType(Property name, ArrayList<RDFNode> array) {};
     private final Resource root;
-    private final Path file;
+    // logical name of the source (a path, a URI, or <archive>#<entry>); only used in log messages
+    private final String file;
     private final Path src;
-    private boolean validSOP = true;
-    private Parameters params;
-    
-    public RDFWriter(Path src, Path file, Resource root, Parameters params) {
+    // values that did not parse for their VR
+    private int invalidValues;
+    // bytes of the excluded bulk data element being skipped, when it has fragments
+    private long omittedBytes;
+    private final Parameters params;
+
+    public RDFWriter(Path src, String file, Resource root, Parameters params) {
         this.src = src;
         this.file = file;
         this.root = root;
@@ -102,83 +102,20 @@ public class RDFWriter implements DicomInputHandler {
         this.params = params;
     }
 
+    public RDFWriter(Path src, Path file, Resource root, Parameters params) {
+        this(src, String.valueOf(file), root, params);
+    }
+
     public RDFWriter(Path file, Resource root, Parameters params) {
         // no separate source path in this form; use the file so log messages stay meaningful
-        this.src = file;
-        this.file = file;
-        this.root = root;
-        this.m = root.getModel();
-        this.stack.push(root);
-        this.params = params;
+        this(file, String.valueOf(file), root, params);
     }
 
-    public String getReplaceBulkDataURI() {
-        return replaceBulkDataURI;
-    }
-
-    public void setReplaceBulkDataURI(String replaceBulkDataURI) {
-        this.replaceBulkDataURI = replaceBulkDataURI;
-    }
-
-    public void write(Attributes attrs) {
-        stack.push(m.createResource());
-        writeAttributes(attrs);
-        stack.pop();
-    }
-
-    public void writeAttributes(Attributes attrs) {
-        final SpecificCharacterSet cs = attrs.getSpecificCharacterSet();
-        try {
-            attrs.accept((Attributes attrs1, int tag, VR vr, Object value) -> {                
-                writeAttribute(tag, vr, value, cs, attrs1);
-                return true;
-            }, false);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void writeAttribute(int tag, VR vr, Object value, SpecificCharacterSet cs, Attributes attrs) {
-        if (TagUtils.isGroupLength(tag))
-            return;
-        if (value instanceof Value value1)
-            writeValue(value1, attrs.bigEndian());
-        else
-            writeValue(vr, value, attrs.bigEndian(), attrs.getSpecificCharacterSet(vr), true);
-    }
-
-    private void writeValue(Value value, boolean bigEndian) {
-        if (value.isEmpty())
-            return;
-        switch (value) {
-            case Sequence sequence -> {
-                arrays.push(new ArrayType(Value, new ArrayList<>()));
-                for (Attributes item : sequence) {
-                    write(item);
-                }
-                ArrayType at = arrays.pop();
-                stack.pop().addProperty(at.name(), m.createList(at.array().iterator()));
-            }
-            case Fragments fragments -> {
-                arrays.push(new ArrayType(DataFragment, new ArrayList<>()));
-                Fragments frags = fragments;
-                for (Object frag : frags) {
-                    if (frag instanceof Value && ((Value) frag).isEmpty()) {
-                        arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
-                    } else {
-                        if (frag instanceof BulkData bulkData) {
-                            writeBulkData(bulkData);
-                        } else {
-                            writeInlineBinary(frags.vr(), (byte[]) frag, bigEndian, true);
-                        }
-                    }
-                }
-                ArrayType at = arrays.pop();
-                stack.pop().addProperty(at.name(), m.createList(at.array().iterator()));
-            }
-            case BulkData bulkData -> writeBulkData(bulkData);
-            default -> throw new IllegalStateException("Unhandled Value subtype: " + value.getClass().getName());
-        }
+    // Overlay (60xx), curve (50xx) and variable pixel data (7Fxx) groups repeat, and the dictionary
+    // gives an element the same keyword in every group (60003000 and 60023000 are both OverlayData)
+    static boolean isRepeatingGroup(int tag) {
+        int group = tag & 0xFFE00000;
+        return group == 0x50000000 || group == 0x60000000 || group == 0x7F000000;
     }
 
     @Override
@@ -189,27 +126,17 @@ public class RDFWriter implements DicomInputHandler {
         if (TagUtils.isGroupLength(tag)) {
             dis.readValue(dis, attrs);
         } else if (dis.isExcludeBulkData()) {
+            // Bulk data (overlay planes, waveforms, encapsulated documents, ...) is not converted.
+            // Record that it was there, and how many bytes it held, rather than drop the attribute.
+            Resource bnode = m.createResource();
+            stack.peek().addProperty(predicate(tag, attrs), bnode);
+            bnode.addLiteral(pvr, vr.name());
+            omittedBytes = 0;
             dis.readValue(dis, attrs);
-// skip annotation data.  Too bulky for the moment
-        //} else if (TagUtils.toHexString(tag).equals("00660016")) {
-          //  dis.readValue(dis, attrs);
+            bnode.addLiteral(DCM.BulkDataOmitted, byteCount(len == -1 ? omittedBytes : len));
         } else {
             Resource bnode = m.createResource();
-            Property prop;
-            if (params.keywords) {
-                String privateCreator = attrs.getPrivateCreator(tag);
-                String keyword = (privateCreator == null) ? ElementDictionary.keywordOf(tag, null) : null;
-                // Private, unknown (dictionary returns ""), and private-creator tags keep the hex
-                // form - an empty keyword would collapse them all onto the bare namespace URI
-                if (keyword == null || keyword.isEmpty() || keyword.equals("PrivateCreatorID")) {
-                    prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
-                } else {
-                    prop = m.createProperty(DCM.NS, keyword);
-                }
-            } else {
-                prop = m.createProperty(DCM.NS, TagUtils.toHexString(tag));
-            }
-            stack.peek().addProperty(prop, bnode);
+            stack.peek().addProperty(predicate(tag, attrs), bnode);
             stack.push(bnode);
             stack.peek().addLiteral(pvr, vr.name());
             if (vr == VR.SQ || len == -1) {
@@ -228,17 +155,27 @@ public class RDFWriter implements DicomInputHandler {
                         attrs.setBytes(tag, vr, b);
                     writeValue(vr, b, dis.bigEndian(), attrs.getSpecificCharacterSet(vr), false);
                  }
-            } else {
-                //System.out.println("NO VALUE : "+TagUtils.toHexString(tag)+"  "+vr.name());
             }
             stack.pop();
-        }        
+        }
     }
-    
-    public void dump() {
-        m.setNsPrefix("dcm", DCM.NS);
-        m.setNsPrefix("xsd", XSD.NS);
-        RDFDataMgr.write(System.out, m, Lang.TURTLE);
+
+    private Property predicate(int tag, Attributes attrs) {
+        if (params.keywords) {
+            String privateCreator = attrs.getPrivateCreator(tag);
+            String keyword = (privateCreator == null && !isRepeatingGroup(tag)) ? ElementDictionary.keywordOf(tag, null) : null;
+            // Private, unknown (dictionary returns ""), and private-creator tags keep the hex
+            // form - an empty keyword would collapse them all onto the bare namespace URI.
+            // So do repeating-group tags, whose shared keyword would merge their groups.
+            if (keyword != null && !keyword.isEmpty() && !keyword.equals("PrivateCreatorID")) {
+                return m.createProperty(DCM.NS, keyword);
+            }
+        }
+        return m.createProperty(DCM.NS, TagUtils.toHexString(tag));
+    }
+
+    private Literal byteCount(long n) {
+        return m.createTypedLiteral(String.valueOf(n), XSDDatatype.XSDinteger);
     }
 
     private void writeValue(VR vr, Object val, boolean bigEndian, SpecificCharacterSet cs, boolean preserve) {
@@ -252,7 +189,7 @@ public class RDFWriter implements DicomInputHandler {
             case UL -> writeUIntValues(vr, val, bigEndian);
             case OB, OD, OF, OL, OV, OW, UN -> writeInlineBinary(vr, (byte[]) val, bigEndian, preserve);
             case SQ -> {
-                assert true;
+                // items arrive through readValue(DicomInputStream, Sequence)
             }
         }
     }
@@ -264,59 +201,37 @@ public class RDFWriter implements DicomInputHandler {
         for (String s : ss) {
             if (s == null ) {
                 arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
+            } else if (vr == PN) {
+                writePersonName(s);
             } else {
-                try {
-                    switch (vr) {
-                        case DA, DT -> arrays.peek().array().add(Convert.toXsdDateTime(s));
-                        case DS -> {
-                            try {
-                                arrays.peek().array().add(Convert.toDS(s));
-                            } catch (VRFormatException err) {                             
-                                logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
-                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
-                                //root.addLiteral(DCM.invalidSOPInstance, true);
-                                validSOP = false;
-                            } catch (NumberFormatException err) {
-                                logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
-                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidDS"));
-                                //root.addLiteral(DCM.invalidSOPInstance, true);
-                                validSOP = false;                    
-                            }
-                        }
-                        case IS -> arrays.peek().array().add(Convert.toIS(s));
-                        case PN -> writePersonName(s);
-                        case TM -> {
-                            try {
-                                arrays.peek().array().add(Convert.toTM(s));
-                            } catch (VRFormatException err) {                             
-                                logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});                                   
-                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
-                                //root.addLiteral(DCM.invalidSOPInstance, true);
-                                validSOP = false;
-                            } catch (NumberFormatException err) {
-                                logger.log(Level.SEVERE, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
-                                arrays.peek().array().add(root.getModel().createTypedLiteral(s, "https://halcyon.is/dicom/ns/invalidTM"));
-                                //root.addLiteral(DCM.invalidSOPInstance, true);
-                                validSOP = false;                    
-                            }                            
-                        }
-                        default -> arrays.peek().array().add(m.createTypedLiteral(s));
-                    }
-                } catch (VRFormatException err) {
-                    logger.log(Level.SEVERE, "VRFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
-                    arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
-                    //root.addLiteral(DCM.invalidSOPInstance, true);
-                    validSOP = false;
-                } catch (NumberFormatException err) {
-                    logger.log(Level.WARNING, "NumberFormatException {0} -> {1}", new Object[] {err.getMessage(), src});
-                    arrays.peek().array().add(ResourceFactory.createTypedLiteral(s));
-                    //root.addLiteral(DCM.invalidSOPInstance, true);
-                    validSOP = false;                    
-                }
+                arrays.peek().array().add(toLiteral(vr, s));
             }
         }
         ArrayType at = arrays.pop();
         stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
+    }
+
+    // A value that doesn't parse for its VR keeps its text, typed dcm:invalid<VR>, and the SOP
+    // instance is flagged dcm:invalidSOPInstance
+    private Literal toLiteral(VR vr, String s) {
+        try {
+            return switch (vr) {
+                case DA -> Convert.toXsdDate(s);
+                case DT -> Convert.toXsdDT(s);
+                case DS -> Convert.toDS(s);
+                case IS -> Convert.toIS(s);
+                case TM -> Convert.toTM(s);
+                default -> m.createTypedLiteral(s);
+            };
+        } catch (IllegalArgumentException err) {
+            // VRFormatException and NumberFormatException alike. Each value is only logged at FINE;
+            // endDataset reports the file once, as a large run can hold millions of them.
+            logger.log(Level.FINE, "Invalid {0} value \"{1}\" : {2} -> {3}", new Object[] {vr, s, err.getMessage(), file});
+            if (invalidValues++ == 0) {
+                root.addLiteral(DCM.invalidSOPInstance, true);
+            }
+            return m.createTypedLiteral(s, DCM.invalid(vr));
+        }
     }
 
     private void writeFloatValues(VR vr, Object val, boolean bigEndian) {
@@ -324,19 +239,9 @@ public class RDFWriter implements DicomInputHandler {
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             float d = vr.toFloat(val, bigEndian, i, 0);
-            if (Float.isNaN(d)) {
-                logger.log(Level.INFO, "encode {0} NaN as null -> {1}", new Object[] {vr, file});
-                arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
-            } else {
-                if (d == Float.POSITIVE_INFINITY) {
-                    d = Float.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} Infinity as {1} -> {2}", new Object[] {vr, d, file});
-                } else if (d == Float.NEGATIVE_INFINITY) {
-                    d = -Float.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} -Infinity as {1} -> {2}", new Object[] {vr, d, file});
-                }
-                arrays.peek().array().add(m.createTypedLiteral(d,XSDDatatype.XSDfloat));
-            }
+            arrays.peek().array().add(Float.isFinite(d)
+                ? m.createTypedLiteral(d, XSDDatatype.XSDfloat)
+                : m.createTypedLiteral(nonFinite(d), XSDDatatype.XSDfloat));
         }
         ArrayType at = arrays.pop();
         stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
@@ -347,22 +252,17 @@ public class RDFWriter implements DicomInputHandler {
         int vm = vr.vmOf(val);
         for (int i = 0; i < vm; i++) {
             double d = vr.toDouble(val, bigEndian, i, 0);
-            if (Double.isNaN(d)) {
-                logger.log(Level.INFO, "encode {0} NaN as null -> {1}", new Object[] {vr, file});
-                arrays.peek().array().add(m.createResource().addProperty(RDF.type, DCM.Null));
-            } else {
-                if (d == Double.POSITIVE_INFINITY) {
-                    d = Double.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} Infinity as {1} -> {2}", new Object[] {vr, d, file});
-                } else if (d == Double.NEGATIVE_INFINITY) {
-                    d = -Double.MAX_VALUE;
-                    logger.log(Level.WARNING, "encode {0} -Infinity as {1} -> {2}", new Object[] {vr, d, file});
-                }
-                arrays.peek().array().add(m.createTypedLiteral(d,XSDDatatype.XSDdouble));
-            }
+            arrays.peek().array().add(Double.isFinite(d)
+                ? m.createTypedLiteral(d, XSDDatatype.XSDdouble)
+                : m.createTypedLiteral(nonFinite(d), XSDDatatype.XSDdouble));
         }
         ArrayType at = arrays.pop();
         stack.peek().addProperty(DCM.Value, stack.peek().getModel().createList(at.array().iterator()));
+    }
+
+    // xsd:float and xsd:double have lexical forms of their own for these
+    private static String nonFinite(double d) {
+        return Double.isNaN(d) ? "NaN" : d > 0 ? "INF" : "-INF";
     }
 
     private void writeIntValues(VR vr, Object val, boolean bigEndian) {
@@ -414,22 +314,19 @@ public class RDFWriter implements DicomInputHandler {
     }
 
     private void writeInlineBinary(VR vr, byte[] b, boolean bigEndian, boolean preserve) {
+        if (!params.includeinlinebinary) {
+            // an empty InlineBinary would claim the value is empty; say it was left out, and its size
+            stack.peek().addLiteral(DCM.InlineBinaryOmitted, byteCount(b.length));
+            return;
+        }
         if (bigEndian) {
             b = vr.toggleEndian(b, preserve);
         }
-        if (!params.includeinlinebinary) {
-            stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral("", XSDDatatype.XSDbase64Binary));
-        } else {
-            stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(java.util.Base64.getEncoder().encodeToString(b), XSDDatatype.XSDbase64Binary));
-        }
+        stack.peek().addProperty(DCM.InlineBinary, m.createTypedLiteral(java.util.Base64.getEncoder().encodeToString(b), XSDDatatype.XSDbase64Binary));
     }
 
     private void writeBulkData(BulkData blkdata) {
-        if (replaceBulkDataURI != null) {
-            stack.peek().addProperty(DCM.BulkDataURI, replaceBulkDataURI);
-        } else {
-            stack.peek().addProperty(DCM.BulkDataURI, stack.peek().getModel().createResource(blkdata.getURI()));
-        }
+        stack.peek().addProperty(DCM.BulkDataURI, m.createResource(blkdata.getURI()));
     }
 
     @Override
@@ -449,6 +346,7 @@ public class RDFWriter implements DicomInputHandler {
     public void readValue(DicomInputStream dis, Fragments frags) throws IOException {
         int len = dis.length();
         if (dis.isExcludeBulkData()) {
+            omittedBytes += len;
             dis.skipFully(len);
             return;
         }
@@ -477,8 +375,8 @@ public class RDFWriter implements DicomInputHandler {
 
     @Override
     public void endDataset(DicomInputStream dis) throws IOException {
-        if (!validSOP) {
-            logger.log(Level.WARNING, "Invalid SOP -> {0}", file);
+        if (invalidValues > 0) {
+            logger.log(Level.WARNING, "{0} invalid value(s), typed dcm:invalid<VR> -> {1}", new Object[] {invalidValues, file});
         }
     }
 }

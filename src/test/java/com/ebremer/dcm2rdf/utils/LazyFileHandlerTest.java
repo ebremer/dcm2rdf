@@ -14,7 +14,7 @@ class LazyFileHandlerTest {
     @Test
     void createsNoFileWhenNothingIsLogged(@TempDir Path dir) {
         Path log = dir.resolve("run.log.ttl");
-        LazyFileHandler h = new LazyFileHandler(log.toString().replace('\\', '/'));
+        LazyFileHandler h = new LazyFileHandler(log);
         h.setFormatter(new RDFFormatter());
         h.close();
         assertFalse(Files.exists(log));
@@ -23,11 +23,23 @@ class LazyFileHandlerTest {
     @Test
     void createsFileOnFirstRecord(@TempDir Path dir) throws Exception {
         Path log = dir.resolve("run.log.ttl");
-        LazyFileHandler h = new LazyFileHandler(log.toString().replace('\\', '/'));
+        LazyFileHandler h = new LazyFileHandler(log);
         h.setFormatter(new RDFFormatter());
         h.publish(new LogRecord(Level.SEVERE, "boom"));
         h.close();
         assertTrue(Files.exists(log));
         assertTrue(Files.readString(log).contains("boom"));
+    }
+
+    @Test
+    void percentSignsInThePathAreLiteral(@TempDir Path dir) throws Exception {
+        // FileHandler would read %t as the temp directory and %g as a generation number
+        Path logdir = Files.createDirectories(dir.resolve("100%t-%g"));
+        Path log = logdir.resolve("run.log.ttl");
+        LazyFileHandler h = new LazyFileHandler(log);
+        h.setFormatter(new RDFFormatter());
+        h.publish(new LogRecord(Level.SEVERE, "boom"));
+        h.close();
+        assertTrue(Files.exists(log));
     }
 }

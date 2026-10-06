@@ -7,7 +7,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.shacl.vocabulary.SHACLM;
+import com.ebremer.dcm2rdf.ns.SH;
 
 /**
  * Loads the bundled DICOM SHACL shapes once and shares them. The model is read-only after
@@ -24,7 +24,7 @@ public class SHACL {
 
     private SHACL() {
         m = ModelFactory.createDefaultModel();
-        m.setNsPrefix("sh", SHACLM.NS);
+        m.setNsPrefix("sh", SH.NS);
         try (InputStream fis = SHACL.class.getResourceAsStream("/shacl.ttl")) {
             if (fis == null) {
                 throw new IllegalStateException("shacl.ttl not found on classpath");

@@ -2,6 +2,7 @@ package com.ebremer.dcm2rdf.parameters;
 
 import com.beust.jcommander.IStringConverter;
 import com.beust.jcommander.ParameterException;
+import java.util.Locale;
 import java.util.logging.Level;
 
 public class LogLevelConverter implements IStringConverter<Level> {
@@ -13,7 +14,7 @@ public class LogLevelConverter implements IStringConverter<Level> {
             throw new ParameterException("-level requires a value: " + ALLOWED);
         }
         try {
-            return Level.parse(value.toUpperCase());
+            return Level.parse(value.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw new ParameterException("Invalid -level value '" + value + "'. Must be one of " + ALLOWED);
         }

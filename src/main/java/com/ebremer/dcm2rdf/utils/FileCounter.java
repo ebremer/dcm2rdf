@@ -14,7 +14,27 @@ public class FileCounter {
     private final AtomicLong tarTarFileCount = new AtomicLong(0);
     
     private final AtomicLong zeroLengthFileCount = new AtomicLong(0);
-    private final AtomicLong failedConversionFileCount = new AtomicLong(0); 
+    private final AtomicLong failedConversionFileCount = new AtomicLong(0);
+    // outputs written, and outputs found already there (kept, without -overwrite); tar entries
+    // count one by one
+    private final AtomicLong convertedFileCount = new AtomicLong(0);
+    private final AtomicLong alreadyConvertedFileCount = new AtomicLong(0);
+
+    public void incrementConvertedFileCount() {
+        convertedFileCount.incrementAndGet();
+    }
+
+    public void incrementAlreadyConvertedFileCount() {
+        alreadyConvertedFileCount.incrementAndGet();
+    }
+
+    public long getConvertedFileCount() {
+        return convertedFileCount.get();
+    }
+
+    public long getAlreadyConvertedFileCount() {
+        return alreadyConvertedFileCount.get();
+    }
 
     public void incrementOtherFileCount() {
         otherFileCount.incrementAndGet();
@@ -131,12 +151,14 @@ public class FileCounter {
             """
             Zero Length files      : %d
             Failed Conversions     : %d
-            Successful Conversions : %d
+            Converted              : %d
+            Already converted      : %d
             ================================
             """,
             getZeroFileCount(),
             getFailedConversionFileCount(),
-            getDicomFileCount()+getTarFileCount()-getZeroFileCount()-getFailedConversionFileCount()
+            getConvertedFileCount(),
+            getAlreadyConvertedFileCount()
         ));
         return sb.toString();
     }

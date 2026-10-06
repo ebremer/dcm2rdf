@@ -1,0 +1,23 @@
+name: Native image
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+      - name: Build native image
+        run: mvn -B -Pnative -DskipTests package
+      - name: Smoke test
+        run: bash scripts/smoke.sh target/dcm2rdf

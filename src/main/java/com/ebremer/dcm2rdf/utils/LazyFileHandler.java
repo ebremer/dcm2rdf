@@ -1,6 +1,7 @@
 package com.ebremer.dcm2rdf.utils;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.logging.ErrorManager;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
@@ -14,8 +15,14 @@ public class LazyFileHandler extends Handler {
     private final String pattern;
     private FileHandler delegate;
 
-    public LazyFileHandler(String pattern) {
-        this.pattern = pattern;
+    public LazyFileHandler(Path file) {
+        this.pattern = pattern(file);
+    }
+
+    // FileHandler takes a pattern, not a path: '/' is its separator on all platforms, and '%'
+    // starts a token (%t, %h, %g, %u), so a literal one is written "%%"
+    static String pattern(Path file) {
+        return file.toString().replace("%", "%%").replace('\\', '/');
     }
 
     @Override
@@ -26,6 +33,7 @@ public class LazyFileHandler extends Handler {
         if (delegate == null) {
             try {
                 delegate = new FileHandler(pattern, false);
+                delegate.setEncoding(getEncoding());
                 delegate.setLevel(getLevel());
                 if (getFormatter() != null) {
                     delegate.setFormatter(getFormatter());

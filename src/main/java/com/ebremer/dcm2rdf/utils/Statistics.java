@@ -1,36 +1,29 @@
 package com.ebremer.dcm2rdf.utils;
 
 /**
+ * A run's file and byte counts, and its rates since the run began (when this was created).
  *
  * @author erich
  */
 public class Statistics {
-    private static Statistics statistics = null;
     private long nfiles = 0;
     private long totalbytes = 0;
     private long bytesread = 0;
     private final long start;
-    
-    private Statistics() {
+
+    public Statistics() {
         start = System.nanoTime();
     }
-    
-    public synchronized void AddFile(long size, long nfiles) {
+
+    public synchronized void addFile(long size, long nfiles) {
         this.nfiles = this.nfiles + nfiles;
         this.totalbytes = this.totalbytes + size;
     }
-    
-    public synchronized void AddActuallyRead(long bytes) {
+
+    public synchronized void addBytesRead(long bytes) {
         this.bytesread = this.bytesread + bytes;
     }
-    
-    public static synchronized  Statistics getStatistics() {
-        if (statistics==null) {
-            statistics = new Statistics();
-        }
-        return statistics;
-    }
-    
+
     public synchronized String getStats() {
         double delta = ((System.nanoTime()-start)/1000000000d);
         return String.format("""
@@ -49,7 +42,7 @@ public class Statistics {
             delta,
             ((double) totalbytes)/delta / 1024d / 1024d,
             ((double) bytesread)/delta / 1024d / 1024d,
-            100d*((double) bytesread)/((double) totalbytes),
+            totalbytes == 0 ? 0d : 100d*((double) bytesread)/((double) totalbytes),
             ((double) nfiles)/delta
         );
     }

@@ -1,31 +1,29 @@
 {
   "reflection": [
     {
-      "type": "[Lorg.apache.jena.sparql.core.Var;"
-    },
-    {
-      "type": "ch.qos.logback.classic.BasicConfigurator",
+      "type": "com.beust.jcommander.converters.BooleanConverter",
       "methods": [
         {
           "name": "<init>",
-          "parameterTypes": []
+          "parameterTypes": [
+            "java.lang.String"
+          ]
         }
       ]
     },
     {
-      "type": "ch.qos.logback.classic.joran.SerializedModelConfigurator",
+      "type": "com.beust.jcommander.converters.IntegerConverter",
       "methods": [
         {
           "name": "<init>",
-          "parameterTypes": []
+          "parameterTypes": [
+            "java.lang.String"
+          ]
         }
       ]
     },
     {
-      "type": "ch.qos.logback.classic.spi.LogbackServiceProvider"
-    },
-    {
-      "type": "ch.qos.logback.classic.util.DefaultJoranConfigurator",
+      "type": "com.beust.jcommander.validators.NoValidator",
       "methods": [
         {
           "name": "<init>",
@@ -43,7 +41,19 @@
       ]
     },
     {
-      "type": "com.ebremer.dcm2rdf.libs.isEvenDicomTag",
+      "type": "com.ebremer.dcm2rdf.Dcm2RdfCli",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "main",
+          "parameterTypes": [
+            "java.lang.String[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.ebremer.dcm2rdf.libs.EvenDicomTagFunction",
       "methods": [
         {
           "name": "<init>",
@@ -52,7 +62,7 @@
       ]
     },
     {
-      "type": "com.ebremer.dcm2rdf.libs.isOddDicomTag",
+      "type": "com.ebremer.dcm2rdf.libs.OddDicomTagFunction",
       "methods": [
         {
           "name": "<init>",
@@ -61,16 +71,7 @@
       ]
     },
     {
-      "type": "com.ebremer.dcm2rdf.parameters.BooleanConverter",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "com.ebremer.dcm2rdf.parameters.Dcm2RdfValidator",
+      "type": "com.ebremer.dcm2rdf.libs.RdfListToCdtFunction",
       "methods": [
         {
           "name": "<init>",
@@ -97,8 +98,29 @@
       ]
     },
     {
+      "type": "com.ebremer.dcm2rdf.parameters.LogLevelConverter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.ebremer.dcm2rdf.parameters.NamingConverter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "com.ebremer.dcm2rdf.parameters.Parameters",
       "allDeclaredFields": true
+    },
+    {
+      "type": "com.ebremer.dcm2rdf.parameters.Parameters$RdfFormat"
     },
     {
       "type": "com.ebremer.dcm2rdf.parameters.PositiveInteger",
@@ -174,6 +196,12 @@
       "fields": [
         {
           "name": "FACTORY"
+        },
+        {
+          "name": "maximum"
+        },
+        {
+          "name": "weightedSize"
         }
       ]
     },
@@ -224,14 +252,62 @@
       "type": "java.io.FilePermission"
     },
     {
-      "type": "java.lang.Boolean",
-      "allDeclaredFields": true
+      "type": "java.io.ProxyingConsole",
+      "methods": [
+        {
+          "name": "writer",
+          "parameterTypes": []
+        }
+      ]
     },
     {
-      "type": "java.lang.ProcessBuilder$RedirectPipeImpl"
+      "type": "java.lang.Boolean",
+      "allDeclaredFields": true,
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Integer"
+    },
+    {
+      "type": "java.lang.ProcessBuilder$RedirectPipeImpl",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "fd"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
     },
     {
       "type": "java.lang.RuntimePermission"
+    },
+    {
+      "type": "java.lang.String"
+    },
+    {
+      "type": "java.lang.String[]"
+    },
+    {
+      "type": "java.lang.System",
+      "methods": [
+        {
+          "name": "console",
+          "parameterTypes": []
+        }
+      ]
     },
     {
       "type": "java.net.NetPermission"
@@ -280,16 +356,13 @@
       ]
     },
     {
+      "type": "java.util.logging.Level"
+    },
+    {
       "type": "javax.smartcardio.CardPermission"
     },
     {
       "type": "jdk.internal.misc.Unsafe"
-    },
-    {
-      "type": "org.apache.jena.ontapi.sys.InitOntAPI"
-    },
-    {
-      "type": "org.apache.jena.rdfpatch.system.InitPatch"
     },
     {
       "type": "org.apache.jena.rdfs.sys.InitRDFS"
@@ -301,10 +374,19 @@
       "type": "org.apache.jena.shacl.sys.InitShacl"
     },
     {
-      "type": "org.apache.jena.shex.sys.InitShex"
+      "type": "org.apache.jena.sparql.core.Var[]"
     },
     {
       "type": "org.apache.jena.sparql.pfunction.library.listIndex",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.jena.sparql.pfunction.library.listLength",
       "methods": [
         {
           "name": "<init>",
@@ -319,16 +401,35 @@
       "type": "org.apache.jena.sys.InitJenaCore"
     },
     {
-      "type": "org.apache.jena.tdb1.sys.InitTDB"
-    },
-    {
-      "type": "org.apache.jena.tdb2.sys.InitTDB2"
+      "type": "org.dcm4che3.data.Tag",
+      "allPublicFields": true
     },
     {
       "type": "org.jline.terminal.impl.exec.ExecTerminalProvider",
       "methods": [
         {
           "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.slf4j.jul.JULServiceProvider"
+    },
+    {
+      "type": "sun.launcher.LauncherHelper",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "isStaticMain"
+        },
+        {
+          "name": "noArgMain"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getApplicationClass",
           "parameterTypes": []
         }
       ]
@@ -361,14 +462,23 @@
           "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "sun.util.resources.cldr.CalendarData"
     }
   ],
   "resources": [
     {
       "glob": "META-INF/maven/org.jline/jline-native/pom.properties"
-    },
-    {
-      "glob": "META-INF/services/ch.qos.logback.classic.spi.Configurator"
     },
     {
       "glob": "META-INF/services/java.lang.System$LoggerFinder"
@@ -416,6 +526,9 @@
       "glob": "META-INF/services/org/jline/terminal/provider/jni"
     },
     {
+      "glob": "com/ebremer/dcm2rdf/version.properties"
+    },
+    {
       "glob": "etc/location-mapping.rdf"
     },
     {
@@ -426,18 +539,6 @@
     },
     {
       "glob": "location-mapping.ttl"
-    },
-    {
-      "glob": "logback-test.scmo"
-    },
-    {
-      "glob": "logback-test.xml"
-    },
-    {
-      "glob": "logback.scmo"
-    },
-    {
-      "glob": "logback.xml"
     },
     {
       "glob": "org/jline/nativ/Windows/x86_64/jlinenative.dll"
@@ -462,62 +563,9 @@
     {
       "module": "java.xml",
       "glob": "jdk/xml/internal/jdkcatalog/JDKCatalog.xml"
-    }
-  ],
-  "bundles": [],
-  "jni": [
-    {
-      "type": "com.ebremer.dcm2rdf.dcm2rdf",
-      "methods": [
-        {
-          "name": "main",
-          "parameterTypes": [
-            "java.lang.String[]"
-          ]
-        }
-      ]
     },
     {
-      "type": "java.lang.Boolean",
-      "methods": [
-        {
-          "name": "getBoolean",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "java.lang.ProcessBuilder$RedirectPipeImpl",
-      "fields": [
-        {
-          "name": "fd"
-        }
-      ],
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "sun.launcher.LauncherHelper",
-      "fields": [
-        {
-          "name": "isStaticMain"
-        },
-        {
-          "name": "noArgMain"
-        }
-      ],
-      "methods": [
-        {
-          "name": "getApplicationClass",
-          "parameterTypes": []
-        }
-      ]
+      "bundle": "sun.util.logging.resources.logging"
     }
   ]
 }

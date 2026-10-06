@@ -6,7 +6,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # paths, '#' in output names and the zip-slip checks behave differently on Windows
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -16,3 +21,19 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn -B test
+
+  jar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Build the runnable jar
+        run: mvn -B -Pjar -DskipTests package
+      - name: Smoke test
+        run: |
+          version=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          bash scripts/smoke.sh "target/dcm2rdf-$version.jar"

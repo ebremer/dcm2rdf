@@ -10,6 +10,8 @@ public class Tools {
         if (numericString == null) {
             throw new IllegalArgumentException("Input cannot be null");
         }
-        return String.format("%08d", Long.valueOf(numericString));
+        // pad as text: parsing as a number fails on IDs that aren't one, or are too long for a long
+        int pad = 8 - numericString.length();
+        return pad > 0 ? "0".repeat(pad) + numericString : numericString;
     }
 }

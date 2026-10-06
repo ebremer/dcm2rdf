@@ -1,4 +1,4 @@
-package com.ebremer.dcm2rdf.utils;
+package com.ebremer.dcm2rdf.libs;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +15,8 @@ import org.apache.jena.sparql.expr.NodeValue;
 import org.apache.jena.sparql.function.FunctionBase1;
 import org.apache.jena.sparql.function.FunctionEnv;
 
-public class rdf2cdtList extends FunctionBase1 {
+/** SPARQL {@code dcm:rdf2cdtList(?list)}: an rdf:List as one CDT list literal. */
+public class RdfListToCdtFunction extends FunctionBase1 {
     private Model m;
     
     @Override

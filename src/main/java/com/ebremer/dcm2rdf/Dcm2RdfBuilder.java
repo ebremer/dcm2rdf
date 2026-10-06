@@ -131,8 +131,15 @@ public final class Dcm2RdfBuilder {
         return this;
     }
 
-    /** CLI {@code -cdtlevel}: with {@link #cdt}, only map lists at least this long (default 4). */
+    /**
+     * CLI {@code -cdtlevel}: with {@link #cdt}, only map lists at least this long (default 4).
+     *
+     * @throws IllegalArgumentException if cdtLevel is less than 1
+     */
     public Dcm2RdfBuilder cdtLevel(int cdtLevel) {
+        if (cdtLevel < 1) {
+            throw new IllegalArgumentException("cdtLevel must be at least 1, not " + cdtLevel);
+        }
         this.cdtLevel = cdtLevel;
         return this;
     }
@@ -143,7 +150,7 @@ public final class Dcm2RdfBuilder {
         return this;
     }
 
-    /** CLI {@code -includeinlinebinary}: include inline binary data instead of empty base64 literals. */
+    /** CLI {@code -includeinlinebinary}: include inline binary values; by default only their size is recorded. */
     public Dcm2RdfBuilder includeInlineBinary(boolean includeInlineBinary) {
         this.includeInlineBinary = includeInlineBinary;
         return this;
@@ -188,10 +195,12 @@ public final class Dcm2RdfBuilder {
      * left open; the caller retains ownership and must close it.
      *
      * @param path the source path the DICOM data came from; reported in log messages
-     * @param name logical name of the DICOM source, used in statistics, error messages,
+     * @param name logical name of the DICOM source, used in log and error messages,
      *        and (with {@link #extra}) the recorded source URI and file size. A {@code #}
      *        separates an archive path from a member name, as the CLI does for tar
-     *        entries (e.g. {@code /data/scans.tar#img.dcm}).
+     *        entries (e.g. {@code /data/scans.tar#img.dcm}). The name is never opened; an
+     *        absolute URI (e.g. {@code s3://bucket/img.dcm}) is recorded as is, anything
+     *        else as a file path, whose size is recorded only if it names a local file.
      * @param sbc channel positioned at the start of the DICOM data
      * @throws IOException if the channel cannot be read as DICOM (e.g. it is truncated)
      * @throws IllegalStateException if the source lacks the data the configuration
@@ -207,7 +216,7 @@ public final class Dcm2RdfBuilder {
         DICOM2RDF d2r = new DICOM2RDF(params);
         Model m;
         try {
-            m = d2r.ProcessDICOMasBytes2Model(src, name, is);
+            m = d2r.convert(src, name, is);
         } catch (UncheckedIOException ex) {
             throw new IOException(ex.getMessage(), ex.getCause());
         }
@@ -216,7 +225,7 @@ public final class Dcm2RdfBuilder {
 
     private Parameters toParameters() {
         Parameters params = new Parameters();
-        params.LongForm = longForm;
+        params.longForm = longForm;
         params.extra = extra;
         params.naming = naming.value;
         params.oid = oid;

@@ -1,0 +1,8 @@
+# Shell scripts keep LF everywhere: bash on a Windows checkout fails on CRLF
+*.sh text eol=lf
+
+# DICOM and archive test fixtures are bytes, never text to convert
+*.dcm binary
+*.dat binary
+*.tar binary
+src/test/resources/smoke/** binary

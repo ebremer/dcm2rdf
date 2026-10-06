@@ -143,6 +143,25 @@ class Dcm2RdfBuilderTest {
     }
 
     @Test
+    void channelNameMayBeAUri() throws Exception {
+        try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(syntheticDicom("1.2.3.4.31"))) {
+            Model m = new Dcm2RdfBuilder().extra(true).toModel(Path.of("img.dcm"), "s3://bucket/scans/img.dcm", sbc);
+            Resource subject = m.createResource("urn:oid:1.2.3.4.31");
+            assertTrue(m.contains(subject, PROVO.wasDerivedFrom, m.createResource("s3://bucket/scans/img.dcm")));
+            assertFalse(m.contains(subject, LOC.BibFrame.FileSize), "a URI names no local file to size");
+        }
+        try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(syntheticDicom("1.2.3.4.32"))) {
+            Model m = new Dcm2RdfBuilder().extra(true).toModel(Path.of("scans.tar"), "s3://bucket/scans.tar#a/img.dcm", sbc);
+            assertTrue(m.contains(m.createResource("urn:oid:1.2.3.4.32"), PROVO.wasDerivedFrom,
+                m.createResource("s3://bucket/scans.tar#a/img.dcm")));
+        }
+        try (SeekableInMemoryByteChannel sbc = new SeekableInMemoryByteChannel(syntheticDicom("1.2.3.4.33"))) {
+            Model m = new Dcm2RdfBuilder().toModel(Path.of("img.dcm"), "urn:example:img", sbc);
+            assertTrue(m.containsResource(m.createResource("urn:oid:1.2.3.4.33")));
+        }
+    }
+
+    @Test
     void longFormSkipsOptimizations(@TempDir Path dir) throws Exception {
         Path dcm = dir.resolve("img.dcm");
         Files.write(dcm, syntheticDicom("1.2.3.4.19"));

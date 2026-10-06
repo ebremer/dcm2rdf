@@ -11,6 +11,7 @@ public class Sha256CalculatingInputStream extends FilterInputStream {
     private final MessageDigest messageDigest;
     private byte[] finalHash = null;
     private byte[] skipBuffer = null;
+    private long byteCount = 0;
 
     public Sha256CalculatingInputStream(InputStream in) throws NoSuchAlgorithmException {
         super(in);
@@ -22,6 +23,7 @@ public class Sha256CalculatingInputStream extends FilterInputStream {
         int b = super.read();
         if (b != -1) {
             messageDigest.update((byte) b);
+            byteCount++;
         }
         return b;
     }
@@ -31,6 +33,7 @@ public class Sha256CalculatingInputStream extends FilterInputStream {
         int n = super.read(b, off, len);
         if (n != -1) {
             messageDigest.update(b, off, n);
+            byteCount += n;
         }
         return n;
     }
@@ -65,6 +68,11 @@ public class Sha256CalculatingInputStream extends FilterInputStream {
     @Override
     public synchronized void reset() throws IOException {
         throw new IOException("mark/reset not supported: rewinding would corrupt the digest");
+    }
+
+    /** Number of bytes digested so far, including skipped ones. */
+    public long getByteCount() {
+        return byteCount;
     }
 
     public String getSha256Hash() {

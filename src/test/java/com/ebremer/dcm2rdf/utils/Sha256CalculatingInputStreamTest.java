@@ -26,6 +26,7 @@ class Sha256CalculatingInputStreamTest {
         Sha256CalculatingInputStream s = new Sha256CalculatingInputStream(new ByteArrayInputStream(b));
         s.readAllBytes();
         assertEquals(sha256(b), s.getSha256Hash());
+        assertEquals(b.length, s.getByteCount());
     }
 
     @Test
@@ -37,6 +38,7 @@ class Sha256CalculatingInputStreamTest {
         assertEquals(50_000, s.skip(50_000));
         s.readAllBytes();
         assertEquals(sha256(b), s.getSha256Hash());
+        assertEquals(b.length, s.getByteCount());
     }
 
     @Test

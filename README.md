@@ -26,17 +26,27 @@ or as a native image not requiring a JDK/JRE to be installed.  It is built upon 
 
 1. Must have working JDK25 environment
 2. `mvn -Pjar clean package`
-3. A runnable jar version "dcm2rdf-1.3.0.jar" will be in the target folder
+3. A runnable jar, `dcm2rdf-<version>.jar`, will be in the target folder, `<version>` being the one in `pom.xml`
 
-`java -jar dcm2rdf-1.3.0.jar -help` will display instructions.
+`java -jar target/dcm2rdf-<version>.jar -help` will display instructions, and
+`scripts/smoke.sh target/dcm2rdf-<version>.jar` converts the synthetic set in `src/test/resources/smoke` with it
+under every option.
 
 ## Building platform specific stand-alone
 
 1. Must have at least JDK25 GraalVM CE 25.0.2 installed with fully functional [native-image](https://www.graalvm.org/latest/reference-manual/native-image/) build environment for the platform you are building for.
-2. mvn -Pnative clean native:compile
+2. `mvn -Pnative clean package`
 3. Artifact "dcm2rdf" will be in target folder.
 
 `dcm2rdf -help` will display instructions.
+
+The binary runs on any CPU of the build's architecture. Add `-Dnative.march=native` for a binary tuned to,
+and only runnable on, CPUs like the build machine's.
+
+`scripts/smoke.sh target/dcm2rdf` converts the synthetic set in `src/test/resources/smoke` under
+every option. If a change makes it fail, the reachability metadata in `config/` is missing something:
+rerun the converter on the JVM with `-agentlib:native-image-agent=config-merge-dir=config` across the
+failing options, then rebuild.
 
 ## Roadmap
 1) A paper documenting the referenced community effort.
@@ -53,7 +63,8 @@ Usage: dcm2rdf [options]
   * -src
       Source Folder or File
   * -dest
-      Destination Folder or File
+      Destination Folder. For a single -src file, the output file, or an
+      existing folder to write it in
     -t
       # of threads for processing.  Generally, one thread per file.
       Default: 1
@@ -61,7 +72,8 @@ Usage: dcm2rdf [options]
       results file will be gzipped compressed
       Default: false
     -L
-      Perform minimal conversion to RDF.  Warning - turns all tweaks and optimizations off!
+      Perform minimal conversion to RDF.  Warning - turns all tweaks and
+      optimizations off!
       Default: false
     -version
       Display software version
@@ -101,15 +113,14 @@ Usage: dcm2rdf [options]
       Convert lists to complex data types (CDT)
       Default: false
     -cdtlevel
-      if cdt is true, only do mapping if list length is greater than this
-      value
+      With -cdt, only convert lists of at least this many values
       Default: 4
     -ptags
       if ptags is true, add alternate private tag representation
       Default: false
     -includeinlinebinary
-      Include inline binary data in the RDF output (default: emitted as empty
-      base64 literals)
+      Include inline binary values in the RDF output (by default only their
+      size is recorded)
       Default: false
     -keywords
       Use keyword predicates instead of the tag-based
@@ -117,10 +128,131 @@ Usage: dcm2rdf [options]
     -format
       RDF format type (TTL or NT)
       Default: TTL
+      Possible Values: [TTL, NT]
     -logdir
       Directory for the run log file (only created if something is logged)
       Default: .
+    -sniff
+      Also convert files without a .dcm/.dat extension that carry the DICOM
+      'DICM' marker
+      Default: false
 ```
+
+### Outputs, logs and exit codes
+
+Each source file's output goes to the same place under `-dest` as the file is under `-src`, with its `.dcm` or
+`.dat` extension replaced by the output's own: `.ttl`, or `.nt` with `-format NT`, plus `.gz` with `-c`. An
+existing output is kept unless `-overwrite` is given. Archive members are written as `<archive>#<member>` beside
+the archive's own path (see Archives below).
+
+With a single file as `-src`, `-dest` is the output file: `-dest out` and `-dest out.ttl` both write `out.ttl`.
+If `-dest` is an existing folder, the output goes into it, named after the source.
+
+Problems are logged to the console and, at `-level` (SEVERE by default) and above, to
+`dcm2rdf-<yyyy-MM-dd_HH-mm-ss>.log.ttl` in `-logdir` (the working directory by default). The log is Turtle: one
+resource per record, with `:message`, `:level`, `:dateTime`, `:sourceMethodName` and its `:parameter`s, in the
+`https://halcyon.is/logger/ns/` namespace. It is only created once something is logged. A file that fails to
+convert is logged at SEVERE; a value that does not parse for its VR is reported once per file at WARNING (each
+value at FINE), and kept in the output as described below.
+
+The process exits with
+- `0` when every source was converted, or already had its output;
+- `1` when the run could not start: an unknown option or a bad value, a missing `-src`, or a `-logdir` that
+  can't be created;
+- `2` when the run finished, but some sources failed to convert.
+
+The flags (`-c`, `-oid`, ...) take no value: each turns its option on.
+
+## Output data model
+
+Each DICOM instance becomes one subject, `urn:oid:<SOP Instance UID>` (or `urn:sha256:<hash of the file>`
+with `-naming SHA256`). A file without its own SOP Instance UID, such as a DICOMDIR, is named by the Media
+Storage SOP Instance UID of its file meta information. A SOP Instance UID that is not an OID cannot name the
+instance, and the file fails; `-naming SHA256` converts it.
+
+**Predicates** are `dcm:<gggg><eeee>` in hex, or with `-keywords` the attribute's keyword (`dcm:PatientID`).
+Private attributes and the repeating groups (50xx, 60xx, 7Fxx), whose keyword is shared by all their groups,
+always use hex. `dcm:` is `https://halcyon.is/dicom/ns/`.
+
+**Values.** An attribute whose value multiplicity is always 1 holds its value directly; any other attribute
+holds an `rdf:List` of its values, however many there are. Sequences always hold an `rdf:List` of their
+items, even a single one. The long form (`-L`) keeps every attribute as `[ dcm:vr "LO" ; dcm:Value ( ... ) ]`.
+
+| VR | Value |
+|---|---|
+| AE, AS, AT, CS, LO, LT, SH, ST, UC, UR, UT, UI | `xsd:string` (UI as a `urn:oid:` IRI with `-oid`, when it is an OID) |
+| PN | a node with `dcm:Alphabetic`, `dcm:Ideographic`, `dcm:Phonetic` strings |
+| DA | `xsd:date`; the pre-3.0 form `YYYY.MM.DD` is accepted |
+| DT | the XSD type of its precision, with fraction and UTC offset kept: `xsd:gYear` (`2024`), `xsd:gYearMonth` (`202401`), `xsd:date` (`20240115`), else `xsd:dateTime` (a time cut short of seconds is completed with zeros) |
+| TM | `xsd:time` |
+| DS | `xsd:decimal`, or `xsd:double` when written with an exponent |
+| IS, SS, US, SL, SV, UV | `xsd:integer` |
+| UL | `xsd:unsignedInt` |
+| FL, FD | `xsd:float`, `xsd:double`; NaN and infinities as `"NaN"`, `"INF"`, `"-INF"` |
+| OB, OD, OF, OL, OV, OW, UN | a node `[ dcm:vr "OB" ; dcm:InlineBinaryOmitted <bytes> ]`, or `dcm:InlineBinary` with the base64 value with `-includeinlinebinary` |
+| SQ | an `rdf:List` of item nodes |
+
+A value that does not parse for its VR keeps its text, typed `dcm:invalid<VR>` (`"20241315"^^dcm:invalidDA`),
+and the instance is flagged `dcm:invalidSOPInstance true`.
+
+**Left out.** Bulk data (overlay planes, waveforms, encapsulated documents, ...) is never converted; the
+attribute is kept as `[ dcm:vr "OW" ; dcm:BulkDataOmitted <bytes> ]`. Reading stops at Pixel Data
+(7FE0,0010): attributes after it, such as trailing private groups or Digital Signatures (FFFA,FFFA), are not
+converted.
+
+**Archives.** A tar member is converted to `<archive>#<member>` beside the archive's other outputs, and is
+identified as `file:///path/archive.tar#member` by `-extra`.
+
+**Options**
+- `-oid`: UI values that are OIDs become `urn:oid:` IRIs; any others stay strings.
+- `-detlef`: sequence items get IRIs, `<instance>#<tag>/<index>` for the instance's own sequences and
+  `<item>/<tag>/<index>` below them. Jena's IRI checker warns about these (`Invalid OID`): it does not expect
+  a fragment on a `urn:oid:`.
+- `-cdt`: lists of at least `-cdtlevel` plain values (no blank nodes) become one
+  [CDT](http://w3id.org/awslabs/neptune/SPARQL-CDTs/) list literal.
+- `-wkt`: ContourData becomes a GeoSPARQL `wktLiteral`: POINT, OPEN_PLANAR/OPEN_NONPLANAR (LINESTRING),
+  CLOSED_PLANAR/CLOSEDPLANAR_XOR (POLYGON). Coordinates are converted from mm to metres and stated in
+  EPSG:7706, a local right-handed 3D Cartesian engineering CRS standing in for the patient coordinate system.
+  Contour data that doesn't fit its type stays a list.
+- `-ptags`: private attributes are regrouped under `dcm:hasPrivateElement`, by private creator.
+
+### SHACL shapes
+
+`src/main/resources/shacl.ttl` holds a SHACL property shape for every data element of
+DICOM PS3.6 (2026d), checking the form described above. They hold for the default output and with
+`-keywords`, `-oid`, `-detlef`, `-cdt`, `-wkt`, `-ptags`, `-extra` and `-hash`; not for the long form.
+The file is generated by `ShaclGenerator` (in the test sources) from the standard's DocBook source; regenerate it
+for a new edition rather than edit it.
+
+## Using dcm2rdf as a library
+
+`Dcm2RdfBuilder` is the supported way to embed the converter; the other classes are internal and may change.
+
+```java
+Model model = new Dcm2RdfBuilder()
+    .keywords(true)
+    .oid(true)
+    .toModel(Path.of("image.dcm"));
+```
+
+The command line's entry point is `com.ebremer.dcm2rdf.Dcm2RdfCli`, the jar's main class; the former
+`com.ebremer.dcm2rdf.dcm2rdf` still runs it, but is deprecated.
+
+It is published as `com.ebremer:dcm2rdf` to `https://cursus.bmi.stonybrookmedicine.edu/releases`, with
+sources and javadoc. The command line's own dependencies (JCommander, progressbar, the SLF4J JUL binding) are
+optional, so they don't reach applications that embed it.
+
+## Tests
+
+`mvn test` converts a synthetic set of DICOM files (`src/test/resources/smoke`, generated by `SmokeFixtures`)
+under every option.
+
+`mvn test -Pgolden` also converts two real, de-identified files from The Cancer Imaging Archive, which it
+downloads into `target/golden-samples` and checks against pinned hashes. They are third-party data, so neither
+they nor their conversions are stored in the repository; the expected output is kept as a digest. Their
+sources, citations and licences are in `src/test/resources/golden/README.md`. A GitHub workflow runs them
+weekly.
+
 ## References
 - 2009 [Context-Driven Ontological Annotations In DICOM Images - Towards a semantic PACS](https://www.scitepress.org/PublishedPapers/2009/15502/15502.pdf)
 - 2013 [DICOM metadata as RDF](https://dl.gi.de/items/6ae82b4a-c2c8-4d7e-b45b-088e82080f99) - <[Preprint](https://www.netestate.de/dicom/DICOM_metadata_as_RDF.pdf)> <[Source Code](https://github.com/Bonubase/dicom2rdf)>

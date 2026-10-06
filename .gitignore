@@ -1,5 +1,13 @@
-# TTL files
-*.ttl
+# Conversion outputs and run logs left in the checkout (-logdir defaults to the working
+# directory). Only these: a blanket *.ttl would hide new .ttl sources and test fixtures.
+/*.ttl
+/*.ttl.gz
+/*.nt
+/*.nt.gz
+dcm2rdf-*.log.ttl
+
+# NetBeans run configurations, which hold local paths
+nbactions*.xml
 
 # Compiled class file
 *.class

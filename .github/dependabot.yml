@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # pull requests go to develop, where changes are integrated before they reach master
+  - package-ecosystem: maven
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
